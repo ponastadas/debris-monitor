@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
     "preview": "vite preview"
   },
   "dependencies": {
