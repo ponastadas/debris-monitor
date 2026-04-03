@@ -1,0 +1,73 @@
+services:
+
+  backend:
+    build:
+      context: ./backend
+      target: development        # uses the dev stage from Dockerfile
+    volumes:
+      - ./backend:/var/www/html  # hot reload — edit files, see changes instantly
+      - /var/www/html/vendor     # keep vendor inside container
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_KEY: ""                # generated on first run via make setup
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: debris_local
+      DB_USERNAME: debris
+      DB_PASSWORD: secret
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - local
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app          # hot reload via Vite HMR
+      - /app/node_modules        # keep node_modules inside container
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    networks:
+      - local
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: debris_local
+      MYSQL_USER: debris
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: rootsecret
+    ports:
+      - "3306:3306"              # expose so you can connect with TablePlus/DBeaver
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - local
+
+  mailpit:
+    image: axllent/mailpit                # catches all Laravel emails locally
+    ports:
+      - "8025:8025"                       # web UI at http://localhost:8025
+      - "1025:1025"                       # SMTP
+    networks:
+      - local
+
+volumes:
+  db_data:
+
+networks:
+  local:

@@ -1,0 +1,18 @@
+services:
+
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY}-backend:staging
+    environment:
+      APP_ENV: staging
+      APP_DEBUG: "true"           # visible errors on staging only
+    labels:
+      - "traefik.http.routers.api.rule=Host(`staging.debris-monitor.com`) && PathPrefix(`/api`)"
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY}-frontend:staging
+    labels:
+      - "traefik.http.routers.app.rule=Host(`staging.debris-monitor.com`)"
+
+  db:
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}_staging   # isolated staging DB
