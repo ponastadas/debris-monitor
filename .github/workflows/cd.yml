@@ -1,0 +1,141 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - develop   # → staging
+      - main      # → production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ── Determine environment ──────────────────────────────────
+  config:
+    name: "Resolve target environment"
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      tag: ${{ steps.env.outputs.tag }}
+
+    steps:
+      - id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "tag=staging" >> $GITHUB_OUTPUT
+          fi
+
+  # ── Build & push Docker images ─────────────────────────────
+  build:
+    name: "Docker Build & Push"
+    runs-on: ubuntu-latest
+    needs: config
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        service: [backend, frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+          tags: |
+            type=raw,value=${{ needs.config.outputs.tag }}
+            type=sha,prefix=,suffix=,format=short
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            APP_ENV=${{ needs.config.outputs.environment }}
+
+  # ── Deploy ─────────────────────────────────────────────────
+  deploy-staging:
+    name: "Deploy → Staging"
+    runs-on: ubuntu-latest
+    needs: [config, build]
+    if: needs.config.outputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://staging.debris-monitor.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to staging via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd ~/debris-monitor
+            git pull origin develop
+            docker compose -f docker-compose.staging.yml pull
+            docker compose -f docker-compose.staging.yml up -d --remove-orphans
+            docker compose -f docker-compose.staging.yml exec -T backend php artisan migrate --force
+            docker image prune -f
+            echo "Staging deployed at $(date)"
+
+      - name: Notify deployment
+        run: echo "Staging deployed — commit ${{ github.sha }}"
+
+  deploy-production:
+    name: "Deploy → Production"
+    runs-on: ubuntu-latest
+    needs: [config, build]
+    if: needs.config.outputs.environment == 'production'
+    environment:
+      name: production
+      url: https://debris-monitor.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to production via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd ~/debris-monitor
+            git pull origin main
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker compose exec -T backend php artisan migrate --force
+            docker compose exec -T backend php artisan config:cache
+            docker compose exec -T backend php artisan route:cache
+            docker image prune -f
+            echo "Production deployed at $(date)"
+
+      - name: Notify deployment
+        run: echo "Production deployed — commit ${{ github.sha }}"
