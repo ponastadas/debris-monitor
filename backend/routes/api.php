@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Controllers\AlertController;
 use App\Http\Controllers\ApiKeyController;
 use App\Http\Controllers\ConjunctionController;
 use App\Http\Controllers\SatelliteController;
+use App\Http\Controllers\WatchedSatelliteController;
 use App\Http\Middleware\AuthenticateApiKey;
 use Illuminate\Support\Facades\Route;
 
@@ -19,11 +21,20 @@ Route::get('/health', fn () => response()->json([
     'time'   => now()->toIso8601String(),
 ]));
 
-// API key management — requires Sanctum session/token auth
+// User-facing routes — require Sanctum session/token auth
 Route::middleware('auth:sanctum')->group(function () {
+    // API key management
     Route::get('/keys', [ApiKeyController::class, 'index']);
     Route::post('/keys', [ApiKeyController::class, 'store']);
     Route::delete('/keys/{id}', [ApiKeyController::class, 'destroy']);
+
+    // Watched satellites
+    Route::get('/watch', [WatchedSatelliteController::class, 'index']);
+    Route::post('/watch', [WatchedSatelliteController::class, 'store']);
+    Route::delete('/watch/{id}', [WatchedSatelliteController::class, 'destroy']);
+
+    // Conjunction alerts for the user's watched satellites
+    Route::get('/alerts', [AlertController::class, 'index']);
 });
 
 // Satellite data — requires API key

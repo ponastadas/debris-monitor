@@ -24,6 +24,11 @@ class User extends Authenticatable
         return $this->hasMany(ApiKey::class);
     }
 
+    public function watchedSatellites(): HasMany
+    {
+        return $this->hasMany(WatchedSatellite::class);
+    }
+
     /**
      * Get the attributes that should be cast.
      *

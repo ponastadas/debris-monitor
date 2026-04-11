@@ -14,5 +14,10 @@ export default defineConfig({
     hmr: {
       clientPort: 5173,
     },
+    watch: {
+      // Polling is required on WSL2 /mnt/c paths where inotify doesn't fire
+      usePolling: true,
+      interval: 300,
+    },
   }
 })

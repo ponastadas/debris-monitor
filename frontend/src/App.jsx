@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ConjunctionAlerts from "./ConjunctionAlerts";
 import DebrisMonitor from "./DebrisMonitor";
 import SatelliteTracker from "./satellite-tracker";
 
@@ -26,6 +27,7 @@ export default function App() {
         {[
           { key: "catalog", label: "CATALOG" },
           { key: "tracker", label: "TRACKER" },
+          { key: "alerts",  label: "ALERTS"  },
         ].map(({ key, label }) => (
           <button
             key={key}
@@ -46,10 +48,9 @@ export default function App() {
         ))}
       </div>
 
-      {view === "catalog"
-        ? <DebrisMonitor onTrack={handleTrack} />
-        : <SatelliteTracker initialNoradId={trackId} />
-      }
+      {view === "catalog" && <DebrisMonitor onTrack={handleTrack} />}
+      {view === "tracker" && <SatelliteTracker initialNoradId={trackId} />}
+      {view === "alerts"  && <ConjunctionAlerts onTrack={handleTrack} />}
     </div>
   );
 }
