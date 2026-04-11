@@ -1,4 +1,4 @@
-.PHONY: up down setup test lint logs shell-backend shell-db
+.PHONY: up down setup test lint logs shell shell-backend shell-db
 
 # ── Start everything ──────────────────────────────────────────
 up:
@@ -45,7 +45,7 @@ logs-backend:
 	docker compose -f docker-compose.local.yml logs -f backend
 
 # ── Shells ────────────────────────────────────────────────────
-shell-backend:
+shell shell-backend:
 	docker compose -f docker-compose.local.yml exec backend sh
 
 shell-db:
