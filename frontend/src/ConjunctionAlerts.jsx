@@ -1,10 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
+import client from "./api/client";
 
 const STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;900&family=JetBrains+Mono:wght@300;400;500&display=swap');
 `;
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 const RISK_COLOR = { HIGH: "#ff3b30", MEDIUM: "#ff9500", LOW: "#30d158" };
 
@@ -147,23 +146,11 @@ function WatchForm({ apiToken, onWatched }) {
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch(`${API_BASE}/watch`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiToken}`,
-        },
-        body: JSON.stringify({ norad_id: noradId.trim() }),
-      });
-      if (! res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setErr(body.message ?? `Error ${res.status}`);
-        return;
-      }
+      await client.post("/watch", { norad_id: noradId.trim() });
       setNoradId("");
       onWatched();
-    } catch {
-      setErr("Network error — is the backend running?");
+    } catch (err) {
+      setErr(err.message ?? "Network error — is the backend running?");
     } finally {
       setBusy(false);
     }
@@ -264,11 +251,10 @@ function TokenGate({ onToken }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ConjunctionAlerts({ onTrack }) {
-  const [apiToken, setApiToken] = useState(() => sessionStorage.getItem("dm_token") ?? "");
-  const [alerts, setAlerts]     = useState([]);
-  const [watched, setWatched]   = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState(null);
+  const [alerts, setAlerts]   = useState([]);
+  const [watched, setWatched] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
 
   // Inject fonts
   useEffect(() => {
@@ -278,60 +264,30 @@ export default function ConjunctionAlerts({ onTrack }) {
     return () => document.head.removeChild(el);
   }, []);
 
-  function saveToken(t) {
-    sessionStorage.setItem("dm_token", t);
-    setApiToken(t);
-  }
-
   const load = useCallback(async () => {
-    if (! apiToken) return;
     setLoading(true);
     setError(null);
     try {
-      const headers = { Authorization: `Bearer ${apiToken}` };
-
       const [alertRes, watchRes] = await Promise.all([
-        fetch(`${API_BASE}/alerts`, { headers }),
-        fetch(`${API_BASE}/watch`,  { headers }),
+        client.get("/alerts"),
+        client.get("/watch"),
       ]);
-
-      if (alertRes.status === 401 || watchRes.status === 401) {
-        setError("Token invalid or expired.");
-        return;
+      setAlerts(alertRes.data.data ?? alertRes.data);
+      setWatched(watchRes.data.data ?? watchRes.data);
+    } catch (err) {
+      if (err.type !== "UNAUTHENTICATED") {
+        setError(err.message ?? "Could not reach the API.");
       }
-
-      setAlerts(await alertRes.json());
-      setWatched(await watchRes.json());
-    } catch {
-      setError("Could not reach the API.");
     } finally {
       setLoading(false);
     }
-  }, [apiToken]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
   async function unwatch(id) {
-    await fetch(`${API_BASE}/watch/${id}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${apiToken}` },
-    });
+    await client.delete(`/watch/${id}`);
     load();
-  }
-
-  if (! apiToken) {
-    return (
-      <div style={{
-        width: "100%",
-        height: "100%",
-        background: "#020810",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}>
-        <TokenGate onToken={saveToken} />
-      </div>
-    );
   }
 
   const highCount = alerts.filter(a => a.risk_level === "HIGH").length;
