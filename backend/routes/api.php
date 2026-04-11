@@ -1,7 +1,9 @@
 <?php
 
-use App\Http\Controllers\SatelliteController;
+use App\Http\Controllers\ApiKeyController;
 use App\Http\Controllers\ConjunctionController;
+use App\Http\Controllers\SatelliteController;
+use App\Http\Middleware\AuthenticateApiKey;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -17,25 +19,29 @@ Route::get('/health', fn () => response()->json([
     'time'   => now()->toIso8601String(),
 ]));
 
-// Satellite data
-Route::prefix('satellites')->group(function () {
-
-    // GET /api/satellites/{noradId}
-    // Returns current TLE + propagated position
-    Route::get('/{noradId}', [SatelliteController::class, 'show'])
-        ->whereNumber('noradId');
-
-    // GET /api/satellites/{noradId}/orbit
-    // Returns orbital path points for the next N minutes
-    Route::get('/{noradId}/orbit', [SatelliteController::class, 'orbit'])
-        ->whereNumber('noradId');
+// API key management — requires Sanctum session/token auth
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/keys', [ApiKeyController::class, 'index']);
+    Route::post('/keys', [ApiKeyController::class, 'store']);
+    Route::delete('/keys/{id}', [ApiKeyController::class, 'destroy']);
 });
 
-// Conjunction / debris risk
-Route::prefix('conjunctions')->group(function () {
+// Satellite data — requires API key
+Route::middleware(AuthenticateApiKey::class)->group(function () {
 
-    // GET /api/conjunctions/{noradId}
-    // Returns nearby objects + risk scores
-    Route::get('/{noradId}', [ConjunctionController::class, 'index'])
-        ->whereNumber('noradId');
+    Route::prefix('satellites')->group(function () {
+        // GET /api/satellites/{noradId}
+        Route::get('/{noradId}', [SatelliteController::class, 'show'])
+            ->whereNumber('noradId');
+
+        // GET /api/satellites/{noradId}/orbit
+        Route::get('/{noradId}/orbit', [SatelliteController::class, 'orbit'])
+            ->whereNumber('noradId');
+    });
+
+    Route::prefix('conjunctions')->group(function () {
+        // GET /api/conjunctions/{noradId}
+        Route::get('/{noradId}', [ConjunctionController::class, 'index'])
+            ->whereNumber('noradId');
+    });
 });
