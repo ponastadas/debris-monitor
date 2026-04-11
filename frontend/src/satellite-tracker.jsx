@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import * as THREE from "three";
+import * as satellite from "satellite.js";
 
 const STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;900&family=JetBrains+Mono:wght@300;400;500&display=swap');
@@ -454,39 +455,31 @@ function generateMockDebris(satLat, satLon, satAlt) {
   return debris.sort((a, b) => b.riskScore - a.riskScore);
 }
 
-export default function SatelliteTracker() {
+export default function SatelliteTracker({ initialNoradId = "25544" }) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const rendererRef = useRef(null);
   const earthRef = useRef(null);
   const atmRef = useRef(null);
   const frameRef = useRef(null);
-  const trackedObjectsRef = useRef([]);
-  const satJsRef = useRef(false);
+  const trackedSatsRef   = useRef([]);          // [{id, name, satrec, colorHex}]
+  const satMeshesRef     = useRef({});           // {noradId: {dot, ring, orbit}}
+  const searchTimerRef   = useRef(null);
 
-  const [noradInput, setNoradInput] = useState("25544");
-  const [satInfo, setSatInfo] = useState(null);
-  const [debris, setDebris] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [overallRisk, setOverallRisk] = useState(null);
-  const [libReady, setLibReady] = useState(false);
+  const [searchQuery,   setSearchQuery]   = useState(initialNoradId);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching,     setSearching]     = useState(false);
+  const [trackedSats,   setTrackedSats]   = useState([]);  // for panel display
+  const [error,         setError]         = useState(null);
+  const [debris,        setDebris]        = useState([]);
+  const [overallRisk,   setOverallRisk]   = useState(null);
 
-  // Inject styles + load satellite.js
+  // Inject styles
   useEffect(() => {
     const styleEl = document.createElement("style");
     styleEl.textContent = STYLE;
     document.head.appendChild(styleEl);
-
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.0.0/satellite.min.js";
-    script.onload = () => { satJsRef.current = true; setLibReady(true); };
-    document.head.appendChild(script);
-
-    return () => {
-      document.head.removeChild(styleEl);
-      if (document.head.contains(script)) document.head.removeChild(script);
-    };
+    return () => { document.head.removeChild(styleEl); };
   }, []);
 
   // Init Three.js
@@ -605,10 +598,40 @@ export default function SatelliteTracker() {
     window.addEventListener("mouseup", onUp);
     window.addEventListener("mousemove", onMove);
 
-    // Animate
+    // Animate — update all tracked satellites every second
+    let lastSatUpdate = 0;
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate);
-      if (!dragging) { earth.rotation.y += 0.0008; atm.rotation.y += 0.0008; }
+
+      const now = new Date();
+      const ts  = now.getTime();
+      if (ts - lastSatUpdate > 1000 && trackedSatsRef.current.length > 0) {
+        lastSatUpdate = ts;
+        const gmst    = satellite.gstime(now);
+        const updates = {};
+        trackedSatsRef.current.forEach(sat => {
+          const meshes = satMeshesRef.current[sat.id];
+          if (!meshes) return;
+          const pv = satellite.propagate(sat.satrec, now);
+          if (!pv.position) return;
+          const geo = satellite.eciToGeodetic(pv.position, gmst);
+          const lat = satellite.degreesLat(geo.latitude);
+          const lon = satellite.degreesLong(geo.longitude);
+          const pos = latLonAltToVec3(lat, lon, geo.height);
+          meshes.dot.position.copy(pos);
+          meshes.ring.position.copy(pos);
+          meshes.ring.lookAt(new THREE.Vector3(0, 0, 0));
+          updates[sat.id] = {
+            lat:   lat.toFixed(2),
+            lon:   lon.toFixed(2),
+            alt:   geo.height.toFixed(0),
+            speed: Math.sqrt(pv.velocity.x**2 + pv.velocity.y**2 + pv.velocity.z**2).toFixed(2),
+          };
+        });
+        if (Object.keys(updates).length)
+          setTrackedSats(prev => prev.map(s => updates[s.id] ? { ...s, ...updates[s.id] } : s));
+      }
+
       renderer.render(scene, camera);
     };
     animate();
@@ -632,125 +655,113 @@ export default function SatelliteTracker() {
     };
   }, []);
 
-  const clearTracked = () => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    trackedObjectsRef.current.forEach((o) => scene.remove(o));
-    trackedObjectsRef.current = [];
-  };
+  const PALETTE     = [0x00d4ff, 0xff6b6b, 0x51cf66, 0xffd43b, 0xe599f7, 0xff922b, 0x74c0fc, 0xa9e34b];
+  const PALETTE_CSS = ['#00d4ff','#ff6b6b','#51cf66','#ffd43b','#e599f7','#ff922b','#74c0fc','#a9e34b'];
 
-  const addTracked = (obj) => {
-    sceneRef.current?.add(obj);
-    trackedObjectsRef.current.push(obj);
-  };
-
-  const handleTrack = async () => {
-    if (!satJsRef.current || !window.satellite) {
-      setError("Propagation library loading… please try again in a moment.");
-      return;
-    }
-    setLoading(true);
+  // ── Search ─────────────────────────────────────────────────
+  const handleSearchChange = (q) => {
+    setSearchQuery(q);
+    setSearchResults([]);
     setError(null);
-    setSatInfo(null);
-    setDebris([]);
-    setOverallRisk(null);
-    clearTracked();
+    clearTimeout(searchTimerRef.current);
+    if (q.trim().length < 2) return;
+
+    searchTimerRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const isId  = /^\d+$/.test(q.trim());
+        const param = isId ? `CATNR=${q.trim()}` : `NAME=${encodeURIComponent(q.trim())}`;
+        const res   = await fetch(`https://celestrak.org/NORAD/elements/gp.php?${param}&FORMAT=TLE`);
+        const text  = await res.text();
+        if (!text || text.includes('No GP data')) { setSearchResults([]); return; }
+        const lines   = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+        const results = [];
+        for (let i = 0; i + 2 < lines.length; i += 3) {
+          if (lines[i+1].startsWith('1 ') && lines[i+2].startsWith('2 ')) {
+            results.push({ name: lines[i], noradId: lines[i+1].substring(2,7).trim(), tle1: lines[i+1], tle2: lines[i+2] });
+          }
+        }
+        setSearchResults(results.slice(0, 10));
+      } catch { setSearchResults([]); }
+      finally  { setSearching(false); }
+    }, 400);
+  };
+
+  // ── Add satellite ───────────────────────────────────────────
+  const addSatellite = (name, noradId, tle1, tle2) => {
+    if (trackedSatsRef.current.find(s => s.id === noradId)) return; // already tracked
+    setError(null);
+    setSearchResults([]);
+    setSearchQuery('');
 
     try {
-      const res = await fetch(
-        `https://celestrak.org/NORAD/elements/gp.php?CATNR=${noradInput.trim()}&FORMAT=TLE`,
-        { headers: { Accept: "text/plain" } }
-      );
-      const text = await res.text();
-      if (!text || text.includes("No GP data") || text.trim().length < 30) {
-        throw new Error(`No data found for NORAD ID ${noradInput.trim()}. Try: 25544 (ISS), 20580 (Hubble).`);
-      }
-      const lines = text.trim().split("\n").map((l) => l.trim());
-      if (lines.length < 3) throw new Error("Invalid TLE format.");
+      const satrec  = satellite.twoline2satrec(tle1, tle2);
+      const now     = new Date();
+      const pv      = satellite.propagate(satrec, now);
+      if (!pv.position) { setError(`${name}: orbit could not be propagated.`); return; }
 
-      const [tleName, tle1, tle2] = lines;
-      const satrec = window.satellite.twoline2satrec(tle1, tle2);
-      const now = new Date();
-      const posVel = window.satellite.propagate(satrec, now);
-      if (!posVel.position) throw new Error("Could not propagate orbit. The satellite may have decayed.");
+      const colorIdx = trackedSatsRef.current.length % PALETTE.length;
+      const color    = PALETTE[colorIdx];
+      const colorCss = PALETTE_CSS[colorIdx];
 
-      const gmst = window.satellite.gstime(now);
-      const geo = window.satellite.eciToGeodetic(posVel.position, gmst);
-      const lat = window.satellite.degreesLat(geo.latitude);
-      const lon = window.satellite.degreesLong(geo.longitude);
-      const alt = geo.height;
-      const spd = Math.sqrt(posVel.velocity.x ** 2 + posVel.velocity.y ** 2 + posVel.velocity.z ** 2).toFixed(2);
-
-      setSatInfo({ name: tleName, lat: lat.toFixed(3), lon: lon.toFixed(3), alt: alt.toFixed(0), speed: spd, id: noradInput.trim() });
-
-      // Place satellite on globe
-      // Account for earth's current rotation
-      const earthRotY = earthRef.current?.rotation.y || 0;
-      const earthRotX = earthRef.current?.rotation.x || 0;
-
+      const gmst = satellite.gstime(now);
+      const geo  = satellite.eciToGeodetic(pv.position, gmst);
+      const lat  = satellite.degreesLat(geo.latitude);
+      const lon  = satellite.degreesLong(geo.longitude);
+      const alt  = geo.height;
+      const spd  = Math.sqrt(pv.velocity.x**2 + pv.velocity.y**2 + pv.velocity.z**2).toFixed(2);
       const satPos = latLonAltToVec3(lat, lon, alt);
 
-      // Satellite mesh
-      const satGeo = new THREE.SphereGeometry(0.018, 16, 16);
-      const satMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff });
-      const satMesh = new THREE.Mesh(satGeo, satMat);
-      satMesh.position.copy(satPos);
-      addTracked(satMesh);
+      // 3D objects (children of Earth so they drag with the globe)
+      const dot  = new THREE.Mesh(new THREE.SphereGeometry(0.022,16,16), new THREE.MeshBasicMaterial({ color }));
+      dot.position.copy(satPos);
 
-      // Pulsing ring
-      const ringGeo = new THREE.RingGeometry(0.025, 0.04, 32);
-      const ringMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
-      const ring = new THREE.Mesh(ringGeo, ringMat);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.03,0.046,32), new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.4, side:THREE.DoubleSide }));
       ring.position.copy(satPos);
-      ring.lookAt(new THREE.Vector3(0, 0, 0));
-      addTracked(ring);
+      ring.lookAt(new THREE.Vector3(0,0,0));
 
-      // Radial line
-      const radPts = [new THREE.Vector3(0, 0, 0), satPos];
-      const radGeo = new THREE.BufferGeometry().setFromPoints(radPts);
-      addTracked(new THREE.Line(radGeo, new THREE.LineBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.15 })));
-
-      // Orbital path (~90 min)
       const orbitPts = [];
       for (let i = 0; i <= 90; i++) {
-        const t = new Date(now.getTime() + i * 60000);
-        const pv = window.satellite.propagate(satrec, t);
-        if (!pv.position) continue;
-        const g = window.satellite.gstime(t);
-        const geo2 = window.satellite.eciToGeodetic(pv.position, g);
-        orbitPts.push(latLonAltToVec3(window.satellite.degreesLat(geo2.latitude), window.satellite.degreesLong(geo2.longitude), geo2.height));
+        const t  = new Date(now.getTime() + i * 60000);
+        const pv2 = satellite.propagate(satrec, t);
+        if (!pv2.position) continue;
+        const g2  = satellite.eciToGeodetic(pv2.position, satellite.gstime(t));
+        orbitPts.push(latLonAltToVec3(satellite.degreesLat(g2.latitude), satellite.degreesLong(g2.longitude), g2.height));
       }
-      if (orbitPts.length > 1) {
-        const oGeo = new THREE.BufferGeometry().setFromPoints(orbitPts);
-        addTracked(new THREE.Line(oGeo, new THREE.LineBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.25 })));
+      const orbit = orbitPts.length > 1
+        ? new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbitPts), new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.3 }))
+        : null;
+
+      earthRef.current?.add(dot, ring);
+      if (orbit) earthRef.current?.add(orbit);
+
+      satMeshesRef.current[noradId] = { dot, ring, orbit };
+      trackedSatsRef.current = [...trackedSatsRef.current, { id: noradId, name, satrec, colorCss }];
+      setTrackedSats(prev => [...prev, { id: noradId, name, color: colorCss, lat: lat.toFixed(2), lon: lon.toFixed(2), alt: alt.toFixed(0), speed: spd }]);
+
+      // Debris for first sat
+      if (trackedSatsRef.current.length === 1) {
+        const debrisData = generateMockDebris(lat, lon, alt);
+        setDebris(debrisData);
+        setOverallRisk(Math.max(...debrisData.map(d => d.riskScore)));
       }
+    } catch (err) { setError(err.message); }
+  };
 
-      // Debris
-      const debrisData = generateMockDebris(lat, lon, alt);
-      setDebris(debrisData);
-      const maxRisk = Math.max(...debrisData.map((d) => d.riskScore));
-      setOverallRisk(maxRisk);
-
-      debrisData.forEach((d) => {
-        const dp = latLonAltToVec3(d.lat, d.lon, parseFloat(d.alt));
-        const color = d.riskLevel === "HIGH" ? 0xff3b30 : d.riskLevel === "MEDIUM" ? 0xff9500 : 0x30d158;
-        const dGeo = new THREE.SphereGeometry(0.01, 8, 8);
-        const dMesh = new THREE.Mesh(dGeo, new THREE.MeshBasicMaterial({ color }));
-        dMesh.position.copy(dp);
-        addTracked(dMesh);
-
-        // Line sat → debris
-        const linkPts = [satPos, dp];
-        const linkGeo = new THREE.BufferGeometry().setFromPoints(linkPts);
-        const linkMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: d.riskLevel === "HIGH" ? 0.35 : 0.12 });
-        addTracked(new THREE.Line(linkGeo, linkMat));
+  // ── Remove satellite ────────────────────────────────────────
+  const removeSatellite = (noradId) => {
+    const meshes = satMeshesRef.current[noradId];
+    if (meshes) {
+      [meshes.dot, meshes.ring, meshes.orbit].filter(Boolean).forEach(m => {
+        earthRef.current?.remove(m);
+        m.geometry?.dispose();
+        m.material?.dispose();
       });
-
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      delete satMeshesRef.current[noradId];
     }
+    trackedSatsRef.current = trackedSatsRef.current.filter(s => s.id !== noradId);
+    setTrackedSats(prev => prev.filter(s => s.id !== noradId));
+    if (trackedSatsRef.current.length === 0) { setDebris([]); setOverallRisk(null); }
   };
 
   const risk = overallRisk != null ? riskFromScore(overallRisk) : null;
@@ -778,59 +789,77 @@ export default function SatelliteTracker() {
         <div className="panel-body">
           {/* Search */}
           <div className="section">
-            <div className="section-label">Target Satellite</div>
-            <div className="input-row">
-              <input
-                className="norad-input"
-                value={noradInput}
-                onChange={(e) => setNoradInput(e.target.value)}
-                placeholder="NORAD ID"
-                onKeyDown={(e) => e.key === "Enter" && handleTrack()}
-              />
-              <button className="track-btn" onClick={handleTrack} disabled={loading || !libReady}>
-                {loading ? "..." : "TRACK"}
-              </button>
+            <div className="section-label">Search Satellites</div>
+            <div style={{ position: "relative" }}>
+              <div className="input-row">
+                <input
+                  className="norad-input"
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="Name or NORAD ID…"
+                />
+                {searching && <div className="spinner" style={{ position: "absolute", right: 12, top: 10 }} />}
+              </div>
+              {searchResults.length > 0 && (
+                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "#020a16", border: "1px solid rgba(0,212,255,0.2)", maxHeight: 220, overflowY: "auto" }}>
+                  {searchResults.map(r => (
+                    <div key={r.noradId}
+                      onClick={() => addSatellite(r.name, r.noradId, r.tle1, r.tle2)}
+                      style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid rgba(0,212,255,0.07)", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(0,212,255,0.07)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <span style={{ fontSize: 11, color: "#c8dff0" }}>{r.name}</span>
+                      <span style={{ fontSize: 9, color: "rgba(0,212,255,0.4)", letterSpacing: 1 }}>{r.noradId}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="quick-ids">
+            <div className="quick-ids" style={{ marginTop: 8 }}>
               {QUICK_SATS.map((s) => (
-                <div key={s.id} className="quick-id" onClick={() => { setNoradInput(s.id); }}>
+                <div key={s.id} className="quick-id" onClick={() => handleSearchChange(s.id)}>
                   {s.label}
                 </div>
               ))}
             </div>
-            {loading && (
-              <div className="loading-row">
-                <div className="spinner" />
-                ACQUIRING TLE DATA…
-              </div>
-            )}
-            {error && <div className="error-box">⚠ {error}</div>}
+            {error && <div className="error-box" style={{ marginTop: 8 }}>⚠ {error}</div>}
           </div>
 
-          {/* Satellite Info */}
-          {satInfo && (
+          {/* Tracked satellites list */}
+          {trackedSats.length > 0 && (
             <div className="section">
-              <div className="section-label">Object Data</div>
-              <div className="live-badge">LIVE POSITION</div>
-              <div className="sat-name">{satInfo.name}</div>
-              <div className="data-grid">
-                <div className="data-cell">
-                  <div className="data-cell-label">LATITUDE</div>
-                  <div className="data-cell-value">{satInfo.lat}<span className="data-cell-unit">°</span></div>
+              <div className="section-label">Tracking ({trackedSats.length})</div>
+              <div className="live-badge">LIVE POSITIONS</div>
+              {trackedSats.map(sat => (
+                <div key={sat.id} style={{ marginBottom: 10, background: "rgba(0,212,255,0.03)", border: "1px solid rgba(0,212,255,0.08)", borderLeft: `3px solid ${sat.color}`, padding: "8px 10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: sat.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 10, color: sat.color, fontFamily: "Orbitron, sans-serif", letterSpacing: 1 }}>{sat.name}</span>
+                    </div>
+                    <button onClick={() => removeSatellite(sat.id)} style={{ background: "none", border: "none", color: "rgba(255,100,100,0.5)", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px" }}>×</button>
+                  </div>
+                  <div className="data-grid">
+                    <div className="data-cell">
+                      <div className="data-cell-label">LAT</div>
+                      <div className="data-cell-value" style={{ fontSize: 11 }}>{sat.lat}<span className="data-cell-unit">°</span></div>
+                    </div>
+                    <div className="data-cell">
+                      <div className="data-cell-label">LON</div>
+                      <div className="data-cell-value" style={{ fontSize: 11 }}>{sat.lon}<span className="data-cell-unit">°</span></div>
+                    </div>
+                    <div className="data-cell">
+                      <div className="data-cell-label">ALT</div>
+                      <div className="data-cell-value" style={{ fontSize: 11 }}>{sat.alt}<span className="data-cell-unit">km</span></div>
+                    </div>
+                    <div className="data-cell">
+                      <div className="data-cell-label">VEL</div>
+                      <div className="data-cell-value" style={{ fontSize: 11 }}>{sat.speed}<span className="data-cell-unit">km/s</span></div>
+                    </div>
+                  </div>
                 </div>
-                <div className="data-cell">
-                  <div className="data-cell-label">LONGITUDE</div>
-                  <div className="data-cell-value">{satInfo.lon}<span className="data-cell-unit">°</span></div>
-                </div>
-                <div className="data-cell">
-                  <div className="data-cell-label">ALTITUDE</div>
-                  <div className="data-cell-value">{satInfo.alt}<span className="data-cell-unit">km</span></div>
-                </div>
-                <div className="data-cell">
-                  <div className="data-cell-label">VELOCITY</div>
-                  <div className="data-cell-value">{satInfo.speed}<span className="data-cell-unit">km/s</span></div>
-                </div>
-              </div>
+              ))}
             </div>
           )}
 
@@ -876,9 +905,9 @@ export default function SatelliteTracker() {
             </div>
           )}
 
-          {!satInfo && !loading && !error && (
+          {trackedSats.length === 0 && !error && (
             <div className="empty-state">
-              ENTER A NORAD ID<br />OR SELECT A QUICK TARGET<br />TO BEGIN TRACKING
+              SEARCH BY NAME OR NORAD ID<br />SELECT FROM RESULTS<br />ADD MULTIPLE SATELLITES
             </div>
           )}
         </div>
