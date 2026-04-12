@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import ReactGA from 'react-ga4';
 
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
@@ -28,6 +28,12 @@ import AdminApiKeys from './pages/admin/AdminApiKeys';
 import ConjunctionAlerts from './ConjunctionAlerts';
 import DebrisMonitor from './DebrisMonitor';
 import SatelliteTracker from './satellite-tracker';
+
+// Initialise guest session ID at module load time (runs once when the bundle loads).
+// Sent as X-Guest-ID on all unauthenticated API requests for per-guest quota tracking.
+if (!localStorage.getItem('dm_guest_id')) {
+  localStorage.setItem('dm_guest_id', crypto.randomUUID());
+}
 
 // ── GA4 page tracking ────────────────────────────────────────────────────────
 
@@ -60,10 +66,60 @@ function ImpersonationHandler({ children }) {
   return children;
 }
 
+// ── Alerts gate — shown to unauthenticated visitors ──────────────────────────
+
+function AlertsAuthGate() {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      height: '100vh', background: '#0d1117', gap: 16,
+      fontFamily: "'JetBrains Mono', monospace",
+    }}>
+      <div style={{ color: '#00d4ff', fontSize: 11, letterSpacing: 3, fontFamily: "'Orbitron', sans-serif" }}>
+        CONJUNCTION ALERTS
+      </div>
+      <div style={{ color: 'rgba(0,212,255,0.5)', fontSize: 12, textAlign: 'center', maxWidth: 340, lineHeight: 1.6 }}>
+        Alerts notify you when tracked satellites have upcoming conjunctions.
+        Sign in or create a free account to get started.
+      </div>
+      <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+        <a href="/register" style={{
+          padding: '9px 22px', fontSize: 11, letterSpacing: 2,
+          background: 'rgba(0,212,255,0.12)', border: '1px solid #00d4ff',
+          borderRadius: 4, color: '#00d4ff', textDecoration: 'none',
+        }}>CREATE FREE ACCOUNT</a>
+        <a href="/login" style={{
+          padding: '9px 22px', fontSize: 11, letterSpacing: 2,
+          background: 'transparent', border: '1px solid rgba(0,212,255,0.3)',
+          borderRadius: 4, color: 'rgba(0,212,255,0.6)', textDecoration: 'none',
+        }}>SIGN IN</a>
+      </div>
+    </div>
+  );
+}
+
+// ── Auth nav button style ─────────────────────────────────────────────────────
+
+const authNavBtn = (primary) => ({
+  padding: '6px 14px',
+  fontSize: 9,
+  letterSpacing: 2,
+  fontFamily: "'JetBrains Mono', monospace",
+  background: primary ? 'rgba(0,212,255,0.12)' : 'rgba(0,212,255,0.03)',
+  border: `1px solid ${primary ? '#00d4ff' : 'rgba(0,212,255,0.2)'}`,
+  borderRadius: 4,
+  color: primary ? '#00d4ff' : 'rgba(0,212,255,0.5)',
+  cursor: 'pointer',
+  textDecoration: 'none',
+  display: 'inline-block',
+  lineHeight: 'normal',
+});
+
 // ── Main Globe App (existing view-switcher) ───────────────────────────────────
 
 function MainApp() {
-  const [view, setView]   = useState('catalog');
+  const { user, logout }      = useAuth();
+  const [view, setView]       = useState('catalog');
   const [trackId, setTrackId] = useState('25544');
 
   function handleTrack(noradId) {
@@ -73,7 +129,28 @@ function MainApp() {
 
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
-      {/* View toggle */}
+
+      {/* Auth buttons — top left corner */}
+      <div style={{
+        position: 'absolute', top: 16, left: 16, zIndex: 100,
+        display: 'flex', gap: 8, alignItems: 'center',
+      }}>
+        {user ? (
+          <>
+            <a href="/dashboard" style={authNavBtn(true)}>DASHBOARD</a>
+            <button onClick={logout} style={{ ...authNavBtn(false), border: '1px solid rgba(248,81,73,0.25)', color: 'rgba(248,81,73,0.6)' }}>
+              SIGN OUT
+            </button>
+          </>
+        ) : (
+          <>
+            <a href="/register" style={authNavBtn(true)}>REGISTER</a>
+            <a href="/login"    style={authNavBtn(false)}>SIGN IN</a>
+          </>
+        )}
+      </div>
+
+      {/* View toggle — top right, clears the tracker panel */}
       <div style={{
         position: 'absolute', top: 16, right: 360, zIndex: 100,
         display: 'flex', gap: 8, fontFamily: "'JetBrains Mono', monospace",
@@ -102,7 +179,7 @@ function MainApp() {
 
       {view === 'catalog' && <DebrisMonitor onTrack={handleTrack} />}
       {view === 'tracker' && <SatelliteTracker initialNoradId={trackId} />}
-      {view === 'alerts'  && <ConjunctionAlerts onTrack={handleTrack} />}
+      {view === 'alerts'  && (user ? <ConjunctionAlerts onTrack={handleTrack} /> : <AlertsAuthGate />)}
     </div>
   );
 }
@@ -127,13 +204,11 @@ export default function App() {
               <ProtectedRoute><UserDashboard /></ProtectedRoute>
             } />
 
-            {/* Main globe app — protected */}
+            {/* Main globe app — public, no auth required */}
             <Route path="/" element={
-              <ProtectedRoute>
-                <ImpersonationHandler>
-                  <MainApp />
-                </ImpersonationHandler>
-              </ProtectedRoute>
+              <ImpersonationHandler>
+                <MainApp />
+              </ImpersonationHandler>
             } />
 
             {/* Admin panel — admin role required */}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import * as THREE from "three";
 import * as satellite from "satellite.js";
+import client from "./api/client";
 
 const STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;900&family=JetBrains+Mono:wght@300;400;500&display=swap');
@@ -431,6 +432,27 @@ function riskFromScore(score) {
   return { label: "LOW RISK", color: "#30d158", bg: "rgba(48,209,88,0.06)", border: "rgba(48,209,88,0.2)" };
 }
 
+async function fetchConjunctions(noradId) {
+  const res = await client.get(`/conjunctions/${noradId}`);
+  // X-Guest-Requests-Remaining is only present for unauthenticated (guest) requests.
+  // axios normalises header names to lowercase.
+  const remainingHeader = res.headers['x-guest-requests-remaining'];
+  const remaining = remainingHeader !== undefined ? parseInt(remainingHeader, 10) : null;
+
+  return {
+    objects: res.data.data.objects.map((obj) => ({
+      id:        obj.object_id,
+      missKm:    obj.miss_km,
+      prob:      obj.probability,
+      riskScore: obj.risk_score,
+      riskLevel: obj.risk_level,
+      tca:       obj.tca,
+      alt:       obj.altitude_km,
+    })),
+    remaining,
+  };
+}
+
 function generateMockDebris(satLat, satLon, satAlt) {
   const debris = [];
   for (let i = 0; i < 9; i++) {
@@ -471,8 +493,11 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
   const [searching,     setSearching]     = useState(false);
   const [trackedSats,   setTrackedSats]   = useState([]);  // for panel display
   const [error,         setError]         = useState(null);
-  const [debris,        setDebris]        = useState([]);
-  const [overallRisk,   setOverallRisk]   = useState(null);
+  const [debris,            setDebris]            = useState([]);
+  const [overallRisk,       setOverallRisk]       = useState(null);
+  const [guestLimitReached, setGuestLimitReached] = useState(false);
+  // null = authenticated user (no quota); 0–9 = guest with N analyses remaining today
+  const [guestRemaining,    setGuestRemaining]    = useState(null);
 
   // Inject styles
   useEffect(() => {
@@ -739,11 +764,20 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
       trackedSatsRef.current = [...trackedSatsRef.current, { id: noradId, name, satrec, colorCss }];
       setTrackedSats(prev => [...prev, { id: noradId, name, color: colorCss, lat: lat.toFixed(2), lon: lon.toFixed(2), alt: alt.toFixed(0), speed: spd }]);
 
-      // Debris for first sat
+      // Fetch conjunction analysis from backend (replaces client-side mock).
+      // HandlePublicRequest applies quota: 10/day for guests, tier limit for API keys, unlimited for users.
       if (trackedSatsRef.current.length === 1) {
-        const debrisData = generateMockDebris(lat, lon, alt);
-        setDebris(debrisData);
-        setOverallRisk(Math.max(...debrisData.map(d => d.riskScore)));
+        fetchConjunctions(noradId)
+          .then(({ objects, remaining }) => {
+            setDebris(objects);
+            if (objects.length > 0) setOverallRisk(Math.max(...objects.map((d) => d.riskScore)));
+            if (remaining !== null) setGuestRemaining(remaining);
+          })
+          .catch((err) => {
+            if (err.type === 'GUEST_LIMIT_REACHED') {
+              setGuestLimitReached(true);
+            }
+          });
       }
     } catch (err) { setError(err.message); }
   };
@@ -886,7 +920,7 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
           {debris.length > 0 && (
             <div className="section">
               <div className="section-label">Tracked Objects</div>
-              <div className="mock-badge">SIMULATED CONJUNCTION DATA</div>
+              <div className="mock-badge">CONJUNCTION ANALYSIS · PHASE 1</div>
               {debris.map((d) => (
                 <div key={d.id} className="debris-item">
                   <div className="debris-risk-dot" style={{ background: getRiskColor(d.riskLevel) }} />
@@ -905,6 +939,39 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
             </div>
           )}
 
+          {/* Guest limit reached — upgrade CTA */}
+          {guestLimitReached && (
+            <div style={{
+              margin: '16px 0', padding: '16px',
+              background: 'rgba(0,212,255,0.05)',
+              border: '1px solid rgba(0,212,255,0.25)',
+              borderRadius: 6,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              <div style={{ color: '#00d4ff', fontSize: 10, letterSpacing: 2, marginBottom: 6 }}>
+                FREE LIMIT REACHED
+              </div>
+              <div style={{ color: 'rgba(200,220,240,0.7)', fontSize: 11, lineHeight: 1.6, marginBottom: 12 }}>
+                You've used your 10 free analyses today.
+                Create a free account for 500 analyses/day.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <a href="/register" style={{
+                  flex: 1, padding: '8px 0', textAlign: 'center',
+                  fontSize: 10, letterSpacing: 1,
+                  background: 'rgba(0,212,255,0.12)', border: '1px solid #00d4ff',
+                  borderRadius: 4, color: '#00d4ff', textDecoration: 'none',
+                }}>CREATE FREE ACCOUNT</a>
+                <a href="/login" style={{
+                  flex: 1, padding: '8px 0', textAlign: 'center',
+                  fontSize: 10, letterSpacing: 1,
+                  background: 'transparent', border: '1px solid rgba(0,212,255,0.3)',
+                  borderRadius: 4, color: 'rgba(0,212,255,0.6)', textDecoration: 'none',
+                }}>SIGN IN</a>
+              </div>
+            </div>
+          )}
+
           {trackedSats.length === 0 && !error && (
             <div className="empty-state">
               SEARCH BY NAME OR NORAD ID<br />SELECT FROM RESULTS<br />ADD MULTIPLE SATELLITES
@@ -913,7 +980,20 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
         </div>
 
         <div className="panel-footer">
-          TLE SOURCE: CELESTRAK.ORG · CONJUNCTION DATA: SIMULATED
+          {guestRemaining !== null ? (
+            <>
+              {guestRemaining === 0
+                ? <span style={{ color: '#ff9500' }}>LAST FREE ANALYSIS USED TODAY</span>
+                : <span><span style={{ color: '#00d4ff' }}>{guestRemaining}</span> FREE {guestRemaining === 1 ? 'ANALYSIS' : 'ANALYSES'} REMAINING</span>
+              }
+              {' · '}
+              <a href="/register" style={{ color: 'rgba(0,212,255,0.5)', textDecoration: 'none' }}>
+                SIGN UP FOR MORE
+              </a>
+            </>
+          ) : (
+            'TLE SOURCE: CELESTRAK.ORG · CONJUNCTION DATA: DEBRIS.MONITOR API'
+          )}
         </div>
       </div>
     </div>

@@ -9,11 +9,18 @@ const client = axios.create({
   withCredentials: false, // bearer token auth, not cookies
 });
 
-// Attach bearer token from localStorage on every request
+// Attach auth headers on every request
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('dm_token');
   if (token) {
+    // Authenticated user — send bearer token
     config.headers.Authorization = `Bearer ${token}`;
+  } else {
+    // Anonymous guest — send guest ID for quota tracking (X-Guest-ID → HandlePublicRequest)
+    const guestId = localStorage.getItem('dm_guest_id');
+    if (guestId) {
+      config.headers['X-Guest-ID'] = guestId;
+    }
   }
   return config;
 });
@@ -52,10 +59,22 @@ client.interceptors.response.use(
     }
 
     if (status === 429) {
+      const code = body?.error?.code;
+
+      if (code === 'GUEST_LIMIT_REACHED') {
+        return Promise.reject({
+          type: 'GUEST_LIMIT_REACHED',
+          code: 'GUEST_LIMIT_REACHED',
+          message: body.error.message,
+          details: body.error.details ?? {},
+        });
+      }
+
       return Promise.reject({
         type: 'RATE_LIMIT',
-        code: 'RATE_LIMITED',
-        message: 'Too many requests. Please wait a moment and try again.',
+        code: code ?? 'RATE_LIMITED',
+        message: body?.error?.message ?? 'Too many requests. Please wait a moment and try again.',
+        details: body?.error?.details ?? {},
       });
     }
 
