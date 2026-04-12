@@ -9,6 +9,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['api_key_id', 'endpoint', 'method', 'status_code', 'response_ms', 'ip'])]
 class ApiUsage extends Model
 {
+    // Eloquent default would be 'api_usages'; the migration created 'api_usage'.
+    protected $table = 'api_usage';
+
     public const UPDATED_AT = null;
 
     public function apiKey(): BelongsTo

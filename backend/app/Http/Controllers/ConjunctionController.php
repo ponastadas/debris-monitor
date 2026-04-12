@@ -13,11 +13,14 @@ class ConjunctionController extends Controller
         $objects = $this->generateSimulatedConjunctions($noradId);
 
         return response()->json([
-            'norad_id'    => $noradId,
-            'object_count' => count($objects),
-            'computed_at' => now()->toIso8601String(),
-            'source'      => 'simulated',
-            'objects'     => $objects,
+            'success' => true,
+            'data'    => [
+                'norad_id'     => $noradId,
+                'object_count' => count($objects),
+                'computed_at'  => now()->toIso8601String(),
+                'source'       => 'simulated',
+                'objects'      => $objects,
+            ],
         ]);
     }
 

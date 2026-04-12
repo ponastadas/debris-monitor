@@ -12,7 +12,7 @@ use App\Http\Controllers\BillingController;
 use App\Http\Controllers\ConjunctionController;
 use App\Http\Controllers\SatelliteController;
 use App\Http\Controllers\WatchedSatelliteController;
-use App\Http\Middleware\AuthenticateApiKey;
+use App\Http\Middleware\HandlePublicRequest;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -48,6 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Billing (mock mode — real Stripe integration coming soon)
     Route::prefix('billing')->group(function () {
         Route::get('/plan',      [BillingController::class, 'currentPlan']);
+        Route::get('/history',   [BillingController::class, 'paymentHistory']);
         Route::post('/subscribe',[BillingController::class, 'subscribe']);
         Route::post('/cancel',   [BillingController::class, 'cancelSubscription']);
         // TODO: Route::post('/portal', [BillingController::class, 'portal']); — enable when Stripe is configured
@@ -88,8 +89,10 @@ Route::middleware('auth:sanctum')->group(function () {
 // TODO: uncomment when Stripe is configured
 // Route::post('/stripe/webhook', '\Laravel\Cashier\Http\Controllers\WebhookController@handleWebhook');
 
-// ── Satellite data (API key authentication) ───────────────────────────────────
-Route::middleware(AuthenticateApiKey::class)->group(function () {
+// ── Satellite data (guest · Sanctum user · API key) ───────────────────────────
+// HandlePublicRequest accepts all three actor types.
+// Guests: 10 analyses/day. Registered users: unlimited web access. API keys: tier limits.
+Route::middleware(HandlePublicRequest::class)->group(function () {
 
     Route::prefix('satellites')->group(function () {
         Route::get('/{noradId}',       [SatelliteController::class, 'show'])->whereNumber('noradId');
