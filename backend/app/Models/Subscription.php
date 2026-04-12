@@ -2,13 +2,21 @@
 
 namespace App\Models;
 
+use Database\Factories\SubscriptionFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Subscription extends Model
 {
+    /** @use HasFactory<SubscriptionFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'user_id',
+        'name',
+        'stripe_id',
+        'stripe_price',
         'plan',
         'status',
         'current_period_start',
