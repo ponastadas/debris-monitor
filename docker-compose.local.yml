@@ -12,7 +12,10 @@ services:
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
-      APP_KEY: ""                # generated on first run via make setup
+      # NOTE: php artisan serve HTTP workers do NOT inherit process env vars via $_ENV/getenv().
+      # .env is the authoritative source for the HTTP server. Docker env vars below are only
+      # effective for `docker compose exec` artisan/tinker commands, not HTTP requests.
+      APP_KEY: ""                # placeholder — actual key must be set in .env
       DB_CONNECTION: mysql
       DB_HOST: db
       DB_PORT: 3306
