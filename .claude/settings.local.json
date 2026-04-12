@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(make artisan:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker compose -f /mnt/c/projects/debris-monitor/docker-compose.local.yml exec backend php -r ':*)",
+      "Bash(netstat -tlnp)",
+      "Bash(curl -s http://localhost:8000/api/health)",
+      "Bash(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{\"email\":\"admin@debris.monitor\",\"password\":\"admin\"}')",
+      "Bash(ls:*)",
+      "Bash(curl -s http://localhost:8000/api/debug-env)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)"
     ]
   }
 }

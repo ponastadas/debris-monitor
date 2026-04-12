@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Generated from planning session. Use this to onboard Claude Code in VS Code CLI.
+> Last updated: 2026-04-12 (session 3 — monetization foundations). Use this to onboard Claude Code in new sessions.
 
 ---
 
@@ -7,7 +7,7 @@
 
 **Debris Monitor** — a satellite conjunction risk monitoring platform. Dual purpose:
 1. **CI/CD demo** for annual professional goal (show lint → test → Docker build → staging/prod deploy)
-2. **Passive income SaaS** (API-first, monetized later via Stripe + Laravel Cashier)
+2. **Passive income SaaS** (API-first, monetized via Stripe — currently mock mode)
 
 Real product, real pipeline, real data. Not a toy.
 
@@ -19,7 +19,7 @@ Real product, real pipeline, real data. Not a toy.
 |---|---|---|
 | spaceaware.io (Lyteworx) | Defense / Gov | Gated, no developer API |
 | SpaceAware (Riskaware) | Enterprise | Complex, expensive |
-| KeepTrack.space | Hobbyists | No risk scoring, CC BY-NC license, no webhooks |
+| KeepTrack.space | Hobbyists | No risk scoring, CC BY-NC, no webhooks |
 | **Debris Monitor** | **Developers + Startups** | **Clean API, webhooks, freemium, commercial OK** |
 
 ---
@@ -28,10 +28,10 @@ Real product, real pipeline, real data. Not a toy.
 
 | Layer | Tech |
 |---|---|
-| Frontend | React 18 + Vite + Three.js (InstancedMesh for performance) |
+| Frontend | React 19 + Vite + Three.js (InstancedMesh for perf) + React Router v6 |
 | Backend | Laravel 13 (PHP 8.3) |
 | Database | MySQL 8 |
-| Auth | Laravel Sanctum |
+| Auth | Laravel Sanctum (bearer tokens in localStorage) |
 | Testing | Pest (backend) + Vitest (frontend) |
 | Linting | Laravel Pint (backend) + ESLint (frontend) |
 | Containers | Docker + Docker Compose |
@@ -46,46 +46,79 @@ Real product, real pipeline, real data. Not a toy.
 debris-monitor/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml          # lint + test on every PR
-│       └── cd.yml          # Docker build → staging/prod deploy
-├── backend/                # Laravel 13 API
+│       ├── ci.yml              # lint + test on every PR
+│       └── cd.yml              # Docker build → staging/prod deploy
+├── backend/                    # Laravel 13 API
 │   ├── app/
 │   │   ├── Http/
 │   │   │   ├── Controllers/
 │   │   │   │   ├── SatelliteController.php
 │   │   │   │   ├── ConjunctionController.php
-│   │   │   │   └── ApiKeyController.php
+│   │   │   │   ├── ApiKeyController.php
+│   │   │   │   ├── AlertController.php
+│   │   │   │   ├── BillingController.php
+│   │   │   │   ├── WatchedSatelliteController.php
+│   │   │   │   ├── Auth/AuthController.php
+│   │   │   │   └── Admin/
+│   │   │   │       ├── AdminDashboardController.php
+│   │   │   │       ├── AdminUserController.php
+│   │   │   │       ├── AdminSubscriptionController.php
+│   │   │   │       ├── AdminPaymentController.php
+│   │   │   │       └── AdminApiKeyController.php
 │   │   │   └── Middleware/
 │   │   │       └── AuthenticateApiKey.php
 │   │   └── Models/
 │   │       ├── User.php
 │   │       ├── ApiKey.php
-│   │       └── ApiUsage.php
-│   ├── database/
-│   │   └── migrations/
-│   │       └── ..._create_api_keys_and_usage_table.php
+│   │       ├── ApiUsage.php
+│   │       ├── ConjunctionAlert.php
+│   │       ├── WatchedSatellite.php
+│   │       ├── Subscription.php
+│   │       └── Payment.php
+│   ├── database/migrations/    # 8 migrations total
 │   ├── routes/
-│   │   └── api.php
-│   ├── tests/
-│   │   └── Feature/
-│   │       ├── HealthTest.php
-│   │       ├── SatelliteTest.php
-│   │       └── ApiKeyTest.php
-│   └── Dockerfile          # multi-stage: vendor → production → development
-├── frontend/               # React + Vite
+│   │   ├── api.php
+│   │   ├── web.php
+│   │   └── console.php
+│   ├── tests/Feature/
+│   └── Dockerfile              # multi-stage: vendor → production → development
+├── frontend/                   # React 19 + Vite
 │   ├── src/
-│   │   ├── App.jsx
+│   │   ├── main.jsx            # GA4 init, React root
+│   │   ├── App.jsx             # React Router v6 route definitions
+│   │   ├── pages/
+│   │   │   ├── Login.jsx
+│   │   │   ├── Register.jsx
+│   │   │   ├── ForgotPassword.jsx
+│   │   │   ├── ResetPassword.jsx
+│   │   │   ├── UserDashboard.jsx
+│   │   │   └── admin/
+│   │   │       ├── AdminDashboard.jsx
+│   │   │       ├── AdminUsers.jsx
+│   │   │       ├── AdminSubscriptions.jsx
+│   │   │       ├── AdminPayments.jsx
+│   │   │       └── AdminApiKeys.jsx
 │   │   ├── DebrisMonitor.jsx   # full catalog globe (main view)
-│   │   ├── SatelliteTracker.jsx # single satellite drill-down
-│   │   └── test/
-│   │       ├── setup.js
-│   │       └── App.test.jsx
-│   ├── Dockerfile          # multi-stage: node builder → nginx
-│   └── Dockerfile.dev      # dev only, Vite HMR
-├── docker-compose.local.yml    # local dev (hot reload, mailpit)
-├── docker-compose.staging.yml  # staging override
+│   │   ├── SatelliteTracker.jsx
+│   │   ├── ConjunctionAlerts.jsx
+│   │   ├── components/
+│   │   │   ├── ProtectedRoute.jsx
+│   │   │   └── AdminRoute.jsx
+│   │   ├── contexts/
+│   │   │   ├── AuthContext.jsx
+│   │   │   └── ToastContext.jsx
+│   │   ├── api/
+│   │   │   └── client.js       # axios instance with interceptors
+│   │   └── layouts/
+│   │       └── AdminLayout.jsx
+│   ├── Dockerfile              # multi-stage: node builder → nginx
+│   ├── Dockerfile.dev          # dev only, Vite HMR
+│   └── vite.config.js
 ├── docker-compose.yml          # production (Traefik + Let's Encrypt)
-└── Makefile                    # dev shortcuts
+├── docker-compose.local.yml    # local dev (hot reload, mailpit)
+├── docker-compose.staging.yml  # staging overrides
+├── Makefile
+└── CLAUDE_CONTEXT.md
 ```
 
 ---
@@ -94,11 +127,9 @@ debris-monitor/
 
 ```
 main      → production (stable, protected)
-develop   → staging (integration branch)
+develop   → staging (integration branch) ← current branch
 feat/*    → feature branches off develop
 ```
-
-**Rule:** Steps 1–4 (scaffold) committed to `main`. Everything after on `develop`.
 
 ---
 
@@ -124,218 +155,340 @@ make up       # starts backend + frontend + db + mailpit
 ## Makefile Commands
 
 ```bash
-make up           # start all services with build
-make up-d         # start in background
-make down         # stop
-make reset        # stop + wipe DB volumes
-make setup        # first-time setup (generates key + migrates)
-make test         # run Pest tests
-make lint         # run Pint + ESLint
-make logs         # tail all logs
-make shell        # bash into backend container
+make up               # start all services with build
+make up-d             # start in background
+make down             # stop
+make reset            # stop + wipe DB volumes
+make setup            # first-time setup (generates key + migrates)
+make test             # run Pest tests
+make lint             # run Pint + ESLint
+make logs             # tail all logs
+make logs-backend     # backend logs only
+make shell            # bash into backend container
+make shell-db         # mysql shell
+make artisan cmd="..."  # run artisan via Docker
 ```
 
 ---
 
 ## API Routes
 
+### Public
 ```
-GET  /api/health                    → public, health check
-GET  /api/keys                      → auth:sanctum, list user's API keys
-POST /api/keys                      → auth:sanctum, create API key
-DEL  /api/keys/{id}                 → auth:sanctum, revoke API key
-
-# All below require X-API-Key header
-GET  /api/satellites/{noradId}      → TLE + live position
-GET  /api/satellites/{noradId}/orbit → orbital path points
-GET  /api/conjunctions/{noradId}    → nearby objects + risk scores
+GET  /api/health
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/forgot-password
+POST /api/auth/reset-password
 ```
 
-### API Key auth
+### Sanctum bearer token (Authorization: Bearer <token>)
+```
+POST   /api/auth/logout
+GET    /api/auth/me
+PATCH  /api/auth/me
+PATCH  /api/auth/password
 
-Pass key in header:
-```
-X-API-Key: dm_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GET    /api/billing/plan
+GET    /api/billing/history
+POST   /api/billing/subscribe
+POST   /api/billing/cancel
+
+GET    /api/keys
+POST   /api/keys
+DELETE /api/keys/{id}
+
+GET    /api/watch
+POST   /api/watch
+DELETE /api/watch/{id}
+
+GET    /api/alerts
 ```
 
-Or as query param for quick testing:
+### Admin only (Sanctum + role=admin)
 ```
-/api/satellites/25544?api_key=dm_live_xxx
+GET    /api/admin/dashboard
+GET    /api/admin/users
+GET    /api/admin/users/{id}
+PATCH  /api/admin/users/{id}
+POST   /api/admin/users/{id}/impersonate
+GET    /api/admin/subscriptions
+GET    /api/admin/payments
+POST   /api/admin/payments/{id}/refund
+GET    /api/admin/api-keys
 ```
 
-### Rate limit headers on every response
-
+### Satellite/conjunction — HandlePublicRequest (guest · Sanctum user · API key)
 ```
-X-RateLimit-Limit:     100
+GET  /api/satellites/{noradId}        → TLE + metadata
+GET  /api/satellites/{noradId}/orbit  → orbital path data
+GET  /api/conjunctions/{noradId}      → nearby objects + risk scores
+```
+
+These routes accept all three actor types (priority order):
+1. Bearer token → Sanctum user → unlimited web requests
+2. X-API-Key header or ?api_key= → API key tier limits
+3. No auth → guest (10 analyses/day, tracked by X-Guest-ID UUID or IP fallback)
+
+**Guest rate limit headers:**
+```
+X-Guest-Limit: 10
+X-Guest-Requests-Remaining: 7
+```
+
+**API key rate limit headers:**
+```
+X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 87
-X-RateLimit-Reset:     1712188799
-X-API-Tier:            free
+X-RateLimit-Reset: 1712188799
+X-API-Tier: free
+```
+
+**Guest limit response (429):**
+```json
+{
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "GUEST_LIMIT_REACHED",
+    "message": "You've used your 10 free analyses today. Create a free account to continue.",
+    "details": { "limit": 10, "used": 10, "reset_at": "...", "upgrade_url": "/register" }
+  }
+}
 ```
 
 ---
 
-## Monetization Tiers (future — architecture already supports it)
+## API Response Envelope
 
-| Tier | Price | Daily limit | Webhooks | Satellites |
-|---|---|---|---|---|
-| Free | $0 | 100 req | No | 5 |
-| Starter | $19/mo | 10,000 req | Yes | Unlimited |
-| Pro | $79/mo | 100,000 req | Yes | Unlimited |
-| Enterprise | Custom | Unlimited | Yes | Unlimited |
+All backend responses use a consistent envelope:
+```json
+{ "success": true, "data": { ... } }
+{ "success": false, "error": { "type": "VALIDATION", "code": 422, "message": "...", "details": {} } }
+```
 
-**Stripe integration:** Laravel Cashier (`composer require laravel/cashier`).
-`ApiKey::tierDefaults()` is the single source of truth for limits — update it when adding billing.
+Error types: `VALIDATION`, `FORBIDDEN`, `UNAUTHORIZED`, `RATE_LIMIT`, `NOT_FOUND`, `SERVER_ERROR`
 
----
-
-## Data Sources
-
-| Source | Data | Auth | Refresh |
-|---|---|---|---|
-| CelesTrak (celestrak.org) | TLE data, active sats | None | Every 6h via scheduler |
-| Space-Track (space-track.org) | Full catalog + CDM conjunction messages | Free account | Daily |
-
-**Key insight:** Don't proxy — cache. Fetch once on a schedule, serve all users from MySQL. Rate limits become irrelevant.
-
-TLE groups fetched:
-- `GROUP=active` — all active satellites (~6,000)
-- `GROUP=cosmos-2251-debris` — Cosmos 2251 collision debris
-- `GROUP=iridium-33-debris` — Iridium 33 collision debris
-- `GROUP=fengyun-1c-debris` — FY-1C ASAT test debris
-- `GROUP=2019-006` — Indian ASAT test debris
-- `GROUP=rocket-bodies` — spent rocket stages
+Defined via Controller helpers + exception renderer overrides in `bootstrap/app.php`.
 
 ---
 
-## Frontend — Globe Architecture
+## Auth Architecture
 
-### DebrisMonitor.jsx (main view)
-Full catalog visualization — all ~10,000+ tracked objects.
-
-**Key tech decision:** `THREE.InstancedMesh` — renders all objects in a single WebGL draw call. spaceaware.io renders each separately → 0 FPS. This renders at 60 FPS.
-
-Object categories with colors:
-- 🔵 Active satellites `#388bfd`
-- 🔴 Debris `#f85149`
-- 🟡 Rocket bodies `#d29922`
-- ⚫ Unknown `#8b949e`
-
-Features:
-- Full catalog from 6 CelesTrak TLE sources
-- Category toggles (show/hide each type)
-- Orbital distribution (LEO/MEO/HEO/GEO)
-- Time simulation with speed controls (1×, 10×, 1min/s, 10min/s)
-- Live FPS counter
-- Search bar (NORAD ID or name)
-- Selected object detail panel
-
-### SatelliteTracker.jsx (drill-down view)
-Single satellite focus — enter NORAD ID, see:
-- Live position on globe
-- Orbital path (90 min)
-- Nearby debris objects (color-coded risk)
-- Miss distance, collision probability, TCA per object
-- Risk score banner (LOW / MODERATE / HIGH)
-
-Data flow: fetches TLE from CelesTrak → runs SGP4 via satellite.js → propagates position client-side.
+- **User auth**: Sanctum bearer tokens stored in `localStorage` (key: `dm_token`)
+- **API key auth**: handled inside `HandlePublicRequest` middleware (was separate `AuthenticateApiKey`)
+- **Guest sessions**: UUID stored in `localStorage` (key: `dm_guest_id`), sent as `X-Guest-ID` header
+- **Role system**: `role` enum on `users` table (`user` | `admin`), no Spatie package
+- **Token flow**: login → `personal_access_tokens` row → bearer token in Authorization header
+- **Frontend**: `AuthContext` restores session from localStorage on mount; `useAuth()` hook exposes `{ user, loading, login, register, logout, refreshUser }`
+- **Globe + tracker**: public, no auth required. ALERTS tab requires auth (gated in MainApp).
+- **Axios interceptors** in `src/api/client.js`:
+  - Request: attaches bearer token OR X-Guest-ID header (mutually exclusive)
+  - Response 401: clears token, redirects to /login
+  - Response 429 with `GUEST_LIMIT_REACHED`: distinct error type for upgrade CTA
+  - All errors normalized to `{ type, code, message, details }`
 
 ---
 
-## Backend Controllers
+## Frontend Routes (React Router v6)
 
-### SatelliteController
-- `show($noradId)` — fetches TLE from CelesTrak, returns name + TLE lines + timestamp
-- `orbit($noradId)` — returns TLE lines for client-side propagation
+```
+/login                → Login
+/register             → Register
+/forgot-password      → ForgotPassword
+/reset-password       → ResetPassword
 
-### ConjunctionController
-- `index($noradId)` — returns 9 simulated conjunction objects with risk scores
-- Phase 2: replace simulation with Space-Track CDM API
+(public — no auth required:)
+/                     → MainApp (catalog/tracker/alerts switcher)
+                          CATALOG + TRACKER: always visible
+                          ALERTS tab: shows AlertsAuthGate for unauthenticated users
 
-### ApiKeyController
-- `index()` — list user's keys with today's usage count
-- `store()` — generate new key (shown once), assign free tier defaults
-- `destroy($id)` — soft delete (revoke)
+(ProtectedRoute — requires auth token:)
+/dashboard            → UserDashboard (API keys, billing, watched sats)
+
+(AdminRoute — requires auth + role=admin:)
+/admin                → AdminDashboard
+/admin/users          → AdminUsers
+/admin/subscriptions  → AdminSubscriptions
+/admin/payments       → AdminPayments
+/admin/api-keys       → AdminApiKeys
+```
 
 ---
 
-## AuthenticateApiKey Middleware
+## Frontend Environment Variables
 
-Flow:
-1. Extract key from `X-API-Key` header (or `?api_key=` query param)
-2. Look up in `api_keys` table (active scope)
-3. Check daily rate limit (`api_usage` count for today)
-4. If limited → 429 with `upgrade_url`
-5. Attach key to request for controllers
-6. Process request
-7. Log to `api_usage` table
-8. Append rate limit headers to response
+```
+VITE_GA_MEASUREMENT_ID=G-...          # Google Analytics 4 (blank until ready)
+BACKEND_URL=http://backend:8000       # Docker-only, for Vite proxy (not exposed to browser)
+```
+
+- GA4 initialized in `main.jsx` via `react-ga4`
+- Vite proxy: `/api` → `process.env.BACKEND_URL ?? 'http://localhost:8000'`
+
+---
+
+## Models & Relationships
+
+| Model | Key relationships |
+|---|---|
+| `User` | hasMany ApiKey, hasMany WatchedSatellite, hasOne Subscription, hasMany Payment; `currentPlan()` |
+| `ApiKey` | belongsTo User, hasMany ApiUsage; `tierDefaults()` static. **Table**: `api_keys` |
+| `ApiUsage` | belongsTo ApiKey. **Table**: `api_usage` (explicit — Eloquent would default to `api_usages`) |
+| `GuestUsage` | no relationships; `todayCount(identifier)`, `record(identifier)` static helpers. **Table**: `guest_usage` (explicit) |
+| `Subscription` | belongsTo User; `isActive()`. Cashier-compat columns: name, stripe_id, stripe_price |
+| `Payment` | belongsTo User; `formattedAmount()` |
+| `ConjunctionAlert` | scopes: `upcoming()`, `unnotified()`; methods: `riskLevel()`, `hoursUntilTca()` |
+| `WatchedSatellite` | belongsTo User; stores NORAD ID + cached TLE |
+| `Subscription` | belongsTo User; plan + billing dates |
+| `Payment` | belongsTo User; payment records |
 
 ---
 
 ## Database Schema
 
-### `api_keys`
-```
-id, user_id, name, key (unique, 64 chars), tier,
-daily_limit, webhooks_enabled, satellite_limit,
-last_used_at, expires_at, timestamps, soft_deletes
-```
-
-### `api_usage`
-```
-id, api_key_id, endpoint, method, status_code,
-response_ms, ip, created_at (no updated_at)
-```
+| Table | Key columns |
+|---|---|
+| `users` | id, name, email, password, role (enum: user/admin), addons (JSON, nullable), status, suspended_at |
+| `api_keys` | id, user_id, name, key (unique), tier, daily_limit, webhooks_enabled, satellite_limit, last_used_at, expires_at, soft_deletes |
+| `api_usage` | id, api_key_id, endpoint, method, status_code, response_ms, ip, created_at (no updated_at) |
+| `guest_usage` | id, identifier (guest UUID or IP), date, count; unique(identifier, date) |
+| `watched_satellites` | id, user_id, norad_id (indexed), name, tle_line1, tle_line2, tle_fetched_at |
+| `conjunction_alerts` | id, primary_norad_id, primary_name, secondary_norad_id, secondary_name, tca, miss_distance_km, probability, risk_score, notified_at |
+| `subscriptions` | id, user_id, name (default 'default'), stripe_id (nullable), stripe_price (nullable), plan, status, current_period_start, current_period_end, canceled_at |
+| `payments` | id, user_id, amount (cents), currency, status, description, stripe_charge_id (nullable), refunded_at |
+| `personal_access_tokens` | (Sanctum) |
 
 ---
 
-## CI/CD Pipeline
+## Entitlement Model
 
-### ci.yml — triggers on PR to main/develop
+**Single source of truth**: `app/Services/EntitlementService.php`
 
-```
-backend-lint (Pint)
-    └── backend-test (Pest + MySQL service container)
+All actor types (guest / registered user / API key) resolve through `EntitlementService` to the same capability shape. No scattered `if plan === 'starter'` checks.
 
-frontend-lint (ESLint)
-    └── frontend-test (Vitest)
-            └── frontend-build (vite build)
-```
+| Plan | requests/day | Alerts | API keys | Webhooks | Sat limit |
+|---|---|---|---|---|---|
+| guest | 10 | ✗ | ✗ | ✗ | — |
+| free | 500 | ✗ | ✓ | ✗ | 5 |
+| starter | 10,000 | ✓ | ✓ | ✓ | — |
+| pro | 100,000 | ✓ | ✓ | ✓ | — |
+| enterprise | unlimited | ✓ | ✓ | ✓ | — |
 
-### cd.yml — triggers on push to develop or main
+Methods: `forGuest()`, `forUser(User)`, `forApiKey(ApiKey)`, `can(array, string)`, `label(string)`, `catalog()`, `paidPlanKeys()`, `priceCents(string)`
 
-```
-Push to develop:
-  config → build Docker images (:staging tag) → deploy to staging via SSH
+`EntitlementService` also owns pricing and display labels — `BillingController` sources everything from it.
 
-Push to main:
-  config → build Docker images (:latest tag) → deploy to prod via SSH
-```
+**Add-ons**: `users.addons` (JSON column) stores per-user capability overrides merged on top of base plan in `forUser()`. Example: `{"requests_per_day": 50000, "can_receive_alerts": true}`. Minimal foundation — grows into a `user_addons` table when add-ons become a product feature.
 
-Images pushed to GitHub Container Registry (ghcr.io).
+**When adding new features**: add a flag to `EntitlementService::$plans`, check it where needed.
+**When adding Stripe**: map Cashier plan names to the existing plan keys — nothing else changes.
+**ApiKey::tierDefaults()** on the `ApiKey` model is supplemental (key-level overrides). `EntitlementService` is authoritative for plan-level capabilities.
+
+**Billing**: Mock mode. `BillingController` simulates subscribe/cancel/paymentHistory. DB schema mirrors what Laravel Cashier expects (name, stripe_id, stripe_price columns on subscriptions).
+**Cashier cutover**: `composer require laravel/cashier`, swap the 3 BillingController mock blocks for Cashier calls. Payment records then come from Stripe webhooks instead of being manually created.
+
+---
+
+## Frontend Globe Architecture
+
+### DebrisMonitor.jsx (main view)
+Full catalog — all ~10,000+ tracked objects. `THREE.InstancedMesh` renders everything in one WebGL draw call (60 FPS).
+
+Categories:
+- Active satellites `#388bfd`
+- Debris `#f85149`
+- Rocket bodies `#d29922`
+- Unknown `#8b949e`
+
+Features: category toggles, time simulation (1×/10×/1min/s/10min/s), FPS counter, search, detail panel.
+
+### SatelliteTracker.jsx
+Single satellite: enter NORAD ID → live position + 90-min orbital path + nearby debris risk.
+Data flow: TLE from CelesTrak → SGP4 via satellite.js → client-side propagation.
+
+### ConjunctionAlerts.jsx
+User's upcoming conjunction alerts for their watched satellites.
+
+---
+
+## Admin Panel
+
+- Dark theme matching globe app (Orbitron + JetBrains Mono, `#0d1117`, `#00d4ff`)
+- `AdminLayout.jsx` wraps all admin pages
+- `AdminRoute` component checks `user.role === 'admin'`
+- Pages: dashboard stats, user management (suspend/activate), subscription list, payment list + refund, API key overview
+
+---
+
+## Key Middleware
+
+### HandlePublicRequest (`app/Http/Middleware/HandlePublicRequest.php`)
+Used on `/api/satellites/*` and `/api/conjunctions/*`. Resolves actor in priority order:
+1. Bearer token → `auth('sanctum')->user()` → sets actor_type=user, unlimited access
+2. `X-API-Key` or `?api_key=` → validates key, checks daily_limit, logs to api_usage, adds rate limit headers
+3. No auth → reads `X-Guest-ID` header (or falls back to IP), checks/increments `guest_usage` table, adds `X-Guest-Requests-Remaining` header. Returns 429 `GUEST_LIMIT_REACHED` when limit hit.
+
+Sets request attributes: `actor_type`, `actor`, `entitlements`
+
+### EnsureIsAdmin
+Checks `auth()->user()->isAdmin()`. Applied to all `/api/admin/*` routes.
+
+---
+
+## Backend Controllers
+
+### AuthController
+register, login (returns bearer token), logout, me (get/update), password change, forgot-password, reset-password
+
+### SatelliteController
+- `show($noradId)` — fetch TLE from CelesTrak, return name + TLE lines
+- `orbit($noradId)` — return TLE lines for client-side propagation
+
+### ConjunctionController
+- `index($noradId)` — returns 9 simulated conjunction objects (Phase 2: real Space-Track CDM)
+
+### ApiKeyController
+- `index()` — list keys with today's usage
+- `store()` — generate key (shown once), assign free tier defaults
+- `destroy($id)` — soft delete (revoke)
+
+### AlertController
+- `index()` — upcoming conjunction alerts for user's watched satellites
+
+### WatchedSatelliteController
+- `index()`, `store()`, `destroy()` — manage user's tracked NORAD IDs
+
+### BillingController
+- `currentPlan()` — plan + status + entitlements + available_plans (sourced from EntitlementService)
+- `subscribe()` — mock subscribe, records payment, syncs API key tiers
+- `cancelSubscription()` — mock cancel, downgrades API keys to free
+- `paymentHistory()` — last 20 payments for the user (GET /api/billing/history)
+
+### Admin controllers (5)
+- Dashboard stats, user CRUD + suspend/impersonate, subscription list, payment list + refund, API key overview
 
 ---
 
 ## Docker Setup
 
-### Local (docker-compose.local.yml)
-- `backend` — Laravel dev server with volume mount (hot reload)
-- `frontend` — Vite dev server with HMR
+### docker-compose.local.yml (dev)
+- `backend` — Laravel dev server, volume mount for hot reload
+- `frontend` — Vite HMR on :5173, `BACKEND_URL=http://backend:8000` for proxy
 - `db` — MySQL 8 with healthcheck
 - `mailpit` — catches all Laravel emails (UI at :8025)
 
-### Staging (docker-compose.staging.yml)
-- Override: `:staging` image tags, `APP_DEBUG=true`, staging domain, isolated DB name
+### docker-compose.staging.yml
+- `:staging` image tags, `APP_DEBUG=true`, isolated DB name
 
-### Production (docker-compose.yml)
-- Traefik reverse proxy with automatic Let's Encrypt TLS
+### docker-compose.yml (production)
+- Traefik reverse proxy, Let's Encrypt TLS auto-provisioning
 - `:latest` image tags, `APP_DEBUG=false`
-- Named volumes for DB data and certs
 
 ### Backend Dockerfile (multi-stage)
 - `vendor` stage: Composer install
 - `production` stage: PHP-FPM + Nginx + Supervisor (Alpine)
-- `development` stage: PHP CLI dev server
+- `development` stage: PHP CLI dev server (Composer installed via curl)
 
 ### Frontend Dockerfile (multi-stage)
 - `builder` stage: `npm ci` + `vite build`
@@ -344,150 +497,167 @@ Images pushed to GitHub Container Registry (ghcr.io).
 
 ---
 
-## GitHub Secrets Required (for CD)
+## CI/CD Pipeline
 
+### ci.yml (triggers on PR to main/develop, push to develop)
 ```
-STAGING_HOST         Staging server IP/hostname
-STAGING_USER         SSH username
-STAGING_SSH_KEY      Private SSH key (PEM)
-PROD_HOST            Production server IP/hostname
-PROD_USER            SSH username
-PROD_SSH_KEY         Private SSH key (PEM)
-VITE_API_URL_STAGING Backend URL for staging frontend builds
+backend-lint (Pint) → backend-test (Pest + MySQL service container)
+frontend-lint (ESLint) → frontend-test (Vitest) → frontend-build
+```
+
+### cd.yml (triggers on push to develop or main)
+```
+develop → build :staging images → deploy to staging via SSH
+main    → build :latest images  → deploy to prod via SSH
+```
+
+Images pushed to GitHub Container Registry (ghcr.io).
+Prod deploy also runs `php artisan config:cache` + `route:cache`.
+
+### GitHub Secrets Required
+```
+STAGING_HOST, STAGING_USER, STAGING_SSH_KEY
+PROD_HOST, PROD_USER, PROD_SSH_KEY
+VITE_API_URL_STAGING
 ```
 
 ---
 
-## What's Been Built (session output)
+## Data Sources
 
-- [x] `.github/workflows/ci.yml`
-- [x] `.github/workflows/cd.yml`
-- [x] `backend/Dockerfile`
-- [x] `frontend/Dockerfile`
-- [x] `frontend/Dockerfile.dev`
-- [x] `docker-compose.yml`
-- [x] `docker-compose.local.yml`
-- [x] `docker-compose.staging.yml`
-- [x] `Makefile`
-- [x] `backend/routes/api.php`
-- [x] `backend/app/Http/Controllers/SatelliteController.php`
-- [x] `backend/app/Http/Controllers/ConjunctionController.php`
-- [x] `backend/app/Http/Controllers/ApiKeyController.php`
-- [x] `backend/app/Http/Middleware/AuthenticateApiKey.php`
-- [x] `backend/app/Models/ApiKey.php`
-- [x] `backend/app/Models/ApiUsage.php`
-- [x] `backend/app/Models/User.php` (updated with apiKeys relationship)
-- [x] `backend/database/migrations/..._create_api_keys_and_usage_table.php`
-- [x] `backend/tests/Feature/HealthTest.php`
-- [x] `backend/tests/Feature/SatelliteTest.php`
-- [x] `backend/tests/Feature/ApiKeyTest.php`
-- [x] `frontend/src/DebrisMonitor.jsx` (full catalog globe)
-- [x] `frontend/src/SatelliteTracker.jsx` (single sat drill-down)
-- [x] `README.md`
-- [x] `debris-monitor-setup-guide.md` (full step-by-step from scratch)
+| Source | Data | Auth | Refresh |
+|---|---|---|---|
+| CelesTrak | TLE data | None | Every 6h (planned scheduler) |
+| Space-Track | Full catalog + CDM conjunction messages | Free account | Daily (Phase 2) |
+
+**Key insight:** Don't proxy — cache. Fetch once on a schedule, serve from MySQL.
+
+TLE groups:
+- `GROUP=active` — all active satellites (~6k)
+- `GROUP=cosmos-2251-debris`, `iridium-33-debris`, `fengyun-1c-debris`, `2019-006` — debris fields
+- `GROUP=rocket-bodies` — spent stages
 
 ---
 
-## What's Next (in priority order)
+## Known Issues
 
-1. **ApiKey factory** — needed for tests to pass
-   ```bash
-   php artisan make:factory ApiKeyFactory
-   ```
-   Definition:
-   ```php
-   public function definition(): array {
-     return [
-       'user_id'          => User::factory(),
-       'name'             => 'Test Key',
-       'key'              => ApiKey::generate(),
-       'tier'             => 'free',
-       'daily_limit'      => 100,
-       'webhooks_enabled' => false,
-       'satellite_limit'  => 5,
-     ];
-   }
-   ```
+- **satellite.js WASM build error**: top-level await incompatible with iife format — pre-existing issue, not introduced by recent work. Frontend build via CI may need `vite.config.js` adjustments.
 
-2. **TLE sync command** — `php artisan tle:sync`
-   - Fetch all TLE groups from CelesTrak
-   - Store in `satellites` + `tle_records` tables
-   - Run via Laravel Scheduler every 6 hours
-   - Cron entry in Docker: `* * * * * php artisan schedule:run`
+- **`php artisan serve` ignores Docker Compose `environment:` for HTTP requests**: PHP's built-in web server does NOT populate `$_ENV` or `getenv()` from the OS process environment in HTTP request handlers. phpdotenv loads `.env` as the sole source. Docker Compose `environment:` vars ARE visible in `docker compose exec` (Tinker/artisan) but NOT in HTTP requests. Always set DB/APP vars in `.env` directly — never rely on Docker env overriding `.env` for the HTTP server. Root cause of a hard login bug: Tinker showed MySQL/user-found, HTTP showed SQLite/user-missing.
 
-3. **Satellites + TleRecord migrations**
-   - `satellites` table: norad_id, name, type, country, launch_date
-   - `tle_records` table: satellite_id, line1, line2, epoch, fetched_at
+---
 
-4. **Wire frontend to backend API**
-   - Replace CelesTrak direct fetch in DebrisMonitor.jsx with `/api/satellites`
-   - Pass API key from env var (`VITE_API_KEY` in `.env.local`)
+## What's Built
 
-5. **Conjunction risk engine**
-   - Replace simulated data in ConjunctionController with real Space-Track CDM data
-   - Space-Track account needed: https://www.space-track.org/auth/createAccount
+- [x] CI/CD pipeline (ci.yml + cd.yml)
+- [x] Docker multi-stage builds (backend + frontend)
+- [x] docker-compose local/staging/prod
+- [x] Makefile dev shortcuts
+- [x] Laravel API: health, satellites, conjunctions, API keys
+- [x] AuthenticateApiKey middleware with rate limiting
+- [x] Full user auth (Sanctum bearer tokens)
+- [x] Password reset flow
+- [x] API key management (CRUD + rate limiting)
+- [x] Watched satellites
+- [x] Conjunction alerts
+- [x] Mock billing (subscribe/cancel)
+- [x] Admin panel (5 pages: dashboard, users, subscriptions, payments, API keys)
+- [x] React Router v6 with protected + admin routes
+- [x] AuthContext + ToastContext
+- [x] Axios interceptors with error normalization
+- [x] DebrisMonitor.jsx (full catalog globe, InstancedMesh) — public, no auth
+- [x] SatelliteTracker.jsx — public, no auth; calls /api/conjunctions/{noradId} for risk analysis
+- [x] ConjunctionAlerts.jsx — requires auth (gated in MainApp with AlertsAuthGate)
+- [x] GA4 via react-ga4 + VITE_GA_MEASUREMENT_ID
+- [x] Guest session system (UUID in localStorage → X-Guest-ID header → HandlePublicRequest → guest_usage table)
+- [x] EntitlementService — centralized capability resolver for guest/user/API key
+- [x] HandlePublicRequest middleware — unified actor resolution for public satellite/conjunction endpoints
+- [x] GuestLimitReached banner in tracker (upgrade CTA when 10/day exhausted)
+- [x] Guest remaining count in tracker panel footer (shows X analyses remaining for guests)
+- [x] GuestUsage::record() — race-condition-safe (insertOrIgnore + atomic SQL increment); renamed from increment() to avoid Eloquent conflict
+- [x] GuestAccessTest.php — full test coverage: guest quota, auth boundaries, API key path, admin guards
+- [x] RefreshDatabase enabled globally for all feature tests
+- [x] EntitlementService expanded: pricing, labels, catalog(), paidPlanKeys(), priceCents(), label() — single source for all plan data
+- [x] Add-on foundation: users.addons JSON column; EntitlementService::forUser() merges per-user overrides on top of base plan
+- [x] Subscriptions table: added name/stripe_id/stripe_price for Cashier compatibility
+- [x] BillingController refactored: sources all plan data from EntitlementService, no duplicate constants
+- [x] BillingController::paymentHistory() — GET /api/billing/history, last 20 payments
+- [x] BillingController::currentPlan() — now includes entitlements + available_plans in response
+- [x] BillingController::subscribe() — validation uses EntitlementService::paidPlanKeys() (no hardcoded strings)
+- [x] SubscriptionFactory + PaymentFactory — for test fixtures
+- [x] HasFactory added to Subscription + Payment models
+- [x] AdminUserSeeder — idempotent (firstOrCreate) admin user: admin@debris.monitor / admin
+- [x] BillingTest.php — 13 tests: plan resolution, subscribe/cancel, payment history, auth guards
+- [x] EntitlementTest.php — 14 tests: all actor types, add-on merging, catalog shape, capability checks
+- [x] ApiUsage: explicit $table = 'api_usage' (Eloquent would default to api_usages — bug fixed)
+- [x] GuestUsage: explicit $table = 'guest_usage' (same fix)
+- [x] Globe MainApp: REGISTER + SIGN IN buttons top-left for guests; DASHBOARD + SIGN OUT for authenticated users
+- [x] UserDashboard BillingTab: API-driven plan cards (no hardcoded PLANS), entitlement summary badges, payment history section
 
-6. **User auth + API key dashboard**
-   - Registration / login (Sanctum)
-   - Simple dashboard to create/revoke API keys
-   - Show today's usage vs limit
+---
 
-7. **Webhooks**
-   - `webhooks` table: user_id, url, events[], secret
-   - Dispatch when risk score exceeds threshold
-   - Queue-based delivery with retry
+## What's Next (priority order)
 
-8. **Stripe billing** (when ready)
-   ```bash
-   composer require laravel/cashier
-   ```
-   - Sync tier upgrades to `ApiKey::tierDefaults()`
-   - Subscription webhooks from Stripe → update key tier
+1. **TLE sync command** — `php artisan tle:sync`
+   - Fetch all TLE groups from CelesTrak, store in `satellites` + `tle_records` tables
+   - Laravel Scheduler every 6 hours + cron in Docker
+
+2. **Satellites + TleRecord migrations**
+   - `satellites`: norad_id, name, type, country, launch_date
+   - `tle_records`: satellite_id, line1, line2, epoch, fetched_at
+
+3. **Wire frontend to backend API**
+   - Replace direct CelesTrak fetches in DebrisMonitor.jsx with `/api/satellites`
+   - Pass API key from `VITE_API_KEY` env var
+
+4. **Real conjunction data** — Space-Track CDM integration
+
+5. **Webhooks** — `webhooks` table, queue-based delivery with retry
+
+5. **Stripe billing** — `composer require laravel/cashier`, swap BillingController mock blocks for Cashier calls
+
+6. **Add-on products** — when first add-on ships, migrate `users.addons` JSON into a proper `user_addons` table (the JSON column is the bridge)
 
 ---
 
 ## Laravel 13 Notes
 
-This project uses Laravel 13 (newer than typical training data). Key differences noticed:
-- Uses PHP attributes (`#[Fillable]`, `#[Hidden]`) instead of `$fillable`/`$hidden` arrays
+- PHP attributes (`#[Fillable]`, `#[Hidden]`) instead of `$fillable`/`$hidden` arrays
 - `php artisan install:api` scaffolds Sanctum
 - Pest is the default test runner
+- Exception rendering overridden in `bootstrap/app.php`
 
 ---
 
-## Useful Commands Reference
+## Useful Commands
 
 ```bash
-# Laravel
+# Artisan
 php artisan make:controller FooController
 php artisan make:model Foo -mf          # model + migration + factory
 php artisan make:command TleSyncCommand
-php artisan make:middleware FooMiddleware
 php artisan migrate
 php artisan migrate:fresh --seed
-php artisan test
 php artisan test --filter=ApiKeyTest
 
-# Docker shortcuts (via Makefile)
+# Via Makefile (Docker)
 make shell                              # bash into backend
 make shell-db                           # mysql shell
-make artisan cmd="migrate:fresh"        # run artisan via Docker
+make artisan cmd="migrate:fresh"
 
 # Git
-git checkout -b feat/tle-sync           # new feature branch
-git push -u origin feat/tle-sync        # push + track
+git checkout -b feat/tle-sync
+git push -u origin feat/tle-sync
 ```
 
 ---
 
-## Context for Claude Code
-
-When starting a new session in VS Code CLI, paste this prompt:
+## Starting a New Claude Session
 
 ```
-I'm building "Debris Monitor" — a satellite conjunction risk API and visualization platform.
-Laravel 13 backend, React + Vite frontend, Docker, GitHub Actions CI/CD.
-We're developing in WSL2. The repo is at ~/projects/debris-monitor.
-Read the file CLAUDE_CONTEXT.md in the repo root for full project context.
-Current task: [describe what you want to do]
+I'm building "Debris Monitor" — a satellite conjunction risk API + visualization platform.
+Laravel 13 backend, React 19 + Vite frontend, Docker, GitHub Actions CI/CD.
+Developing in WSL2. Repo at /mnt/c/projects/debris-monitor.
+Read CLAUDE_CONTEXT.md in the repo root for full context.
+Current task: [describe task]
 ```
