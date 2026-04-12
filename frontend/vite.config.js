@@ -21,7 +21,9 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // In Docker: BACKEND_URL=http://backend:8000 (set via docker-compose)
+        // Outside Docker: falls back to localhost:8000
+        target: process.env.BACKEND_URL ?? 'http://localhost:8000',
         changeOrigin: true,
       },
     },

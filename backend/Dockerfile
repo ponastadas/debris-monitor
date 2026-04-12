@@ -18,8 +18,10 @@ EXPOSE 80
 
 # Stage 3: Development (hot reload)
 FROM php:8.3-cli-alpine AS development
-RUN docker-php-ext-install pdo pdo_mysql
-COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
+RUN apk add --no-cache curl \
+    && docker-php-ext-install pdo pdo_mysql \
+    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+    && composer --version
 WORKDIR /var/www/html
 COPY . .
 RUN composer install --no-interaction --prefer-dist

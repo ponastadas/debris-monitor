@@ -35,7 +35,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: http://localhost:8000
+      BACKEND_URL: http://backend:8000   # used by Vite proxy (not exposed to browser)
     networks:
       - local
 
