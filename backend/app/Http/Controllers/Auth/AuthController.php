@@ -12,7 +12,6 @@ use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
@@ -24,7 +23,7 @@ class AuthController extends Controller
         $user = User::create([
             'name'     => $request->name,
             'email'    => $request->email,
-            'password' => Hash::make($request->password),
+            'password' => $request->password,
         ]);
 
         event(new Registered($user));
@@ -39,7 +38,12 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request): JsonResponse
     {
-        if (! Auth::attempt($request->only('email', 'password'))) {
+        $credentials = [
+            'email'    => $request->input('email'),
+            'password' => $request->input('password'),
+        ];
+
+        if (! Auth::attempt($credentials)) {
             throw ValidationException::withMessages([
                 'email' => [__('auth.failed')],
             ]);
@@ -91,7 +95,7 @@ class AuthController extends Controller
         $status = Password::reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function (User $user, string $password): void {
-                $user->forceFill(['password' => Hash::make($password)])->save();
+                $user->forceFill(['password' => $password])->save();
                 $user->tokens()->delete(); // invalidate all sessions on password reset
             }
         );
@@ -124,7 +128,7 @@ class AuthController extends Controller
             'password'              => ['required', 'confirmed', PasswordRule::min(8)->letters()->numbers()],
         ]);
 
-        $request->user()->update(['password' => Hash::make($request->password)]);
+        $request->user()->update(['password' => $request->password]);
 
         // Revoke all other tokens so other sessions are invalidated
         $request->user()->tokens()->where('id', '!=', $request->user()->currentAccessToken()->id)->delete();
