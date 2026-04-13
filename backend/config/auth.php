@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AdminAccount;
 use App\Models\User;
 
 return [
@@ -42,6 +43,13 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // Separate Sanctum guard for admin accounts — only accepts tokens issued
+        // against the admin_accounts table (tokenable_type = AdminAccount).
+        'admin' => [
+            'driver'   => 'sanctum',
+            'provider' => 'admin_accounts',
+        ],
     ],
 
     /*
@@ -64,13 +72,13 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', User::class),
+            'model'  => env('AUTH_MODEL', User::class),
         ],
 
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+        'admin_accounts' => [
+            'driver' => 'eloquent',
+            'model'  => AdminAccount::class,
+        ],
     ],
 
     /*

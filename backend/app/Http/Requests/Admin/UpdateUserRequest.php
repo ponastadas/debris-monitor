@@ -15,7 +15,6 @@ class UpdateUserRequest extends FormRequest
     {
         return [
             'name'   => ['sometimes', 'string', 'max:100'],
-            'role'   => ['sometimes', 'in:user,admin'],
             'status' => ['sometimes', 'in:active,suspended'],
         ];
     }

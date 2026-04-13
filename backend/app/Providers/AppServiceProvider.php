@@ -16,9 +16,14 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Auth endpoints: 5 attempts per minute per IP
+        // Customer auth endpoints: 5 attempts per minute per IP
         RateLimiter::for('auth', function (Request $request) {
             return Limit::perMinute(5)->by($request->ip());
+        });
+
+        // Admin login: stricter — 3 attempts per minute per IP
+        RateLimiter::for('admin-login', function (Request $request) {
+            return Limit::perMinute(3)->by($request->ip());
         });
     }
 }

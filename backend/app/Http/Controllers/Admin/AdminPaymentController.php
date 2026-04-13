@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminAuditLog;
 use App\Models\Payment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,6 +51,20 @@ class AdminPaymentController extends Controller
             'status'      => 'refunded',
             'refunded_at' => now(),
         ]);
+
+        $admin = auth('admin')->user();
+
+        AdminAuditLog::record(
+            $admin->id,
+            'payment.refund',
+            'Payment',
+            $payment->id,
+            [
+                'user_id'  => $payment->user_id,
+                'amount'   => $request->amount ?? $payment->amount,
+                'currency' => $payment->currency,
+            ],
+        );
 
         return $this->success([
             'id'          => $payment->id,

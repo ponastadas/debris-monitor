@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminApiKeyController;
+use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminSubscriptionController;
@@ -28,7 +29,7 @@ Route::get('/health', fn () => response()->json([
     'time'   => now()->toIso8601String(),
 ]));
 
-// ── Authentication (rate-limited: 5/min per IP) ───────────────────────────────
+// ── Customer authentication (rate-limited: 5/min per IP) ─────────────────────
 Route::prefix('auth')->middleware('throttle:auth')->group(function () {
     Route::post('/register',        [AuthController::class, 'register']);
     Route::post('/login',           [AuthController::class, 'login']);
@@ -36,22 +37,21 @@ Route::prefix('auth')->middleware('throttle:auth')->group(function () {
     Route::post('/reset-password',  [AuthController::class, 'resetPassword']);
 });
 
-// ── Authenticated routes (Sanctum bearer token) ───────────────────────────────
+// ── Customer authenticated routes (Sanctum bearer token) ─────────────────────
 Route::middleware('auth:sanctum')->group(function () {
 
     // Auth utilities
-    Route::post('/auth/logout',       [AuthController::class, 'logout']);
-    Route::get('/auth/me',            [AuthController::class, 'me']);
-    Route::patch('/auth/me',          [AuthController::class, 'updateProfile']);
-    Route::patch('/auth/password',    [AuthController::class, 'updatePassword']);
+    Route::post('/auth/logout',    [AuthController::class, 'logout']);
+    Route::get('/auth/me',         [AuthController::class, 'me']);
+    Route::patch('/auth/me',       [AuthController::class, 'updateProfile']);
+    Route::patch('/auth/password', [AuthController::class, 'updatePassword']);
 
     // Billing (mock mode — real Stripe integration coming soon)
     Route::prefix('billing')->group(function () {
-        Route::get('/plan',      [BillingController::class, 'currentPlan']);
-        Route::get('/history',   [BillingController::class, 'paymentHistory']);
-        Route::post('/subscribe',[BillingController::class, 'subscribe']);
-        Route::post('/cancel',   [BillingController::class, 'cancelSubscription']);
-        // TODO: Route::post('/portal', [BillingController::class, 'portal']); — enable when Stripe is configured
+        Route::get('/plan',       [BillingController::class, 'currentPlan']);
+        Route::get('/history',    [BillingController::class, 'paymentHistory']);
+        Route::post('/subscribe', [BillingController::class, 'subscribe']);
+        Route::post('/cancel',    [BillingController::class, 'cancelSubscription']);
     });
 
     // API key management
@@ -60,29 +60,39 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/keys/{id}', [ApiKeyController::class, 'destroy']);
 
     // Watched satellites
-    Route::get('/watch',          [WatchedSatelliteController::class, 'index']);
-    Route::post('/watch',         [WatchedSatelliteController::class, 'store']);
-    Route::delete('/watch/{id}',  [WatchedSatelliteController::class, 'destroy']);
+    Route::get('/watch',         [WatchedSatelliteController::class, 'index']);
+    Route::post('/watch',        [WatchedSatelliteController::class, 'store']);
+    Route::delete('/watch/{id}', [WatchedSatelliteController::class, 'destroy']);
 
     // Conjunction alerts for the user's watched satellites
     Route::get('/alerts', [AlertController::class, 'index']);
+});
 
-    // ── Admin panel (requires admin role) ────────────────────────────────────
-    Route::middleware('admin')->prefix('admin')->group(function () {
-        Route::get('/dashboard',                      [AdminDashboardController::class, 'index']);
+// ── Admin authentication (public — stricter rate limit: 3/min per IP) ────────
+Route::prefix('admin/auth')->middleware('throttle:admin-login')->group(function () {
+    Route::post('/login', [AdminAuthController::class, 'login']);
+});
 
-        Route::get('/users',                          [AdminUserController::class, 'index']);
-        Route::get('/users/{user}',                   [AdminUserController::class, 'show']);
-        Route::patch('/users/{user}',                 [AdminUserController::class, 'update']);
-        Route::post('/users/{user}/impersonate',      [AdminUserController::class, 'impersonate']);
+// ── Admin panel (admin Sanctum token required) ────────────────────────────────
+// auth:admin validates the Bearer token against the admin_accounts table.
+// admin middleware additionally blocks inactive admin accounts.
+Route::prefix('admin')->middleware(['auth:admin', 'admin'])->group(function () {
+    Route::post('/auth/logout', [AdminAuthController::class, 'logout']);
+    Route::get('/auth/me',      [AdminAuthController::class, 'me']);
 
-        Route::get('/subscriptions',                  [AdminSubscriptionController::class, 'index']);
+    Route::get('/dashboard',                  [AdminDashboardController::class, 'index']);
 
-        Route::get('/payments',                       [AdminPaymentController::class, 'index']);
-        Route::post('/payments/{payment}/refund',     [AdminPaymentController::class, 'refund']);
+    Route::get('/users',                      [AdminUserController::class, 'index']);
+    Route::get('/users/{user}',               [AdminUserController::class, 'show']);
+    Route::patch('/users/{user}',             [AdminUserController::class, 'update']);
+    Route::post('/users/{user}/impersonate',  [AdminUserController::class, 'impersonate']);
 
-        Route::get('/api-keys',                       [AdminApiKeyController::class, 'index']);
-    });
+    Route::get('/subscriptions',              [AdminSubscriptionController::class, 'index']);
+
+    Route::get('/payments',                   [AdminPaymentController::class, 'index']);
+    Route::post('/payments/{payment}/refund', [AdminPaymentController::class, 'refund']);
+
+    Route::get('/api-keys',                   [AdminApiKeyController::class, 'index']);
 });
 
 // ── Stripe webhook ─────────────────────────────────────────────────────────────

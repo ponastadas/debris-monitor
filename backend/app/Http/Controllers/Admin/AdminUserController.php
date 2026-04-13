@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateUserRequest;
+use App\Models\AdminAuditLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class AdminUserController extends Controller
 {
@@ -18,7 +18,6 @@ class AdminUserController extends Controller
                 $request->search,
                 fn ($q, $s) => $q->where('email', 'like', "%{$s}%")->orWhere('name', 'like', "%{$s}%")
             )
-            ->when($request->role, fn ($q, $r) => $q->where('role', $r))
             ->when($request->status, fn ($q, $s) => $q->where('status', $s))
             ->with(['subscription'])
             ->withCount('apiKeys')
@@ -47,17 +46,9 @@ class AdminUserController extends Controller
 
     public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
-        // Prevent self-suspension or self-demotion
-        if ($request->user()->id === $user->id) {
-            if (($request->status ?? $user->status) === 'suspended') {
-                return $this->error('SELF_ACTION', 'You cannot suspend your own account.', 422);
-            }
-            if (($request->role ?? $user->role) !== 'admin') {
-                return $this->error('SELF_ACTION', 'You cannot remove your own admin role.', 422);
-            }
-        }
+        $admin = auth('admin')->user();
 
-        $data = $request->only(['name', 'role', 'status']);
+        $data = $request->only(['name', 'status']);
 
         if (isset($data['status']) && $data['status'] === 'suspended' && $user->status !== 'suspended') {
             $data['suspended_at'] = now();
@@ -67,24 +58,32 @@ class AdminUserController extends Controller
 
         $user->update($data);
 
+        if (isset($data['status'])) {
+            AdminAuditLog::record(
+                $admin->id,
+                'user.' . $data['status'],
+                'User',
+                $user->id,
+                ['email' => $user->email],
+            );
+        }
+
         return $this->success($this->userResource($user->fresh(['subscription'])));
     }
 
     public function impersonate(Request $request, User $user): JsonResponse
     {
-        // Block impersonating another admin
-        if ($user->isAdmin() && $request->user()->id !== $user->id) {
-            return $this->error('FORBIDDEN', 'Cannot impersonate another admin.', 403);
-        }
+        $admin = auth('admin')->user();
 
         $token = $user->createToken('impersonation')->plainTextToken;
 
-        Log::info('Admin impersonation', [
-            'admin_id'  => $request->user()->id,
-            'admin_email' => $request->user()->email,
-            'target_id' => $user->id,
-            'target_email' => $user->email,
-        ]);
+        AdminAuditLog::record(
+            $admin->id,
+            'impersonate',
+            'User',
+            $user->id,
+            ['target_email' => $user->email],
+        );
 
         return $this->success([
             'token' => $token,
@@ -95,16 +94,15 @@ class AdminUserController extends Controller
     private function userResource(User $user): array
     {
         return [
-            'id'                => $user->id,
-            'name'              => $user->name,
-            'email'             => $user->email,
-            'role'              => $user->role ?? 'user',
-            'status'            => $user->status ?? 'active',
-            'subscription_plan' => $user->currentPlan(),
+            'id'                  => $user->id,
+            'name'                => $user->name,
+            'email'               => $user->email,
+            'status'              => $user->status ?? 'active',
+            'subscription_plan'   => $user->currentPlan(),
             'subscription_status' => $user->subscription?->status ?? 'none',
-            'api_keys_count'    => $user->api_keys_count ?? null,
-            'suspended_at'      => $user->suspended_at?->toIso8601String(),
-            'created_at'        => $user->created_at->toIso8601String(),
+            'api_keys_count'      => $user->api_keys_count ?? null,
+            'suspended_at'        => $user->suspended_at?->toIso8601String(),
+            'created_at'          => $user->created_at->toIso8601String(),
         ];
     }
 }
