@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import client from '../../api/client';
+import adminClient from '../../api/adminClient';
 
 function RefundModal({ payment, onClose, onRefunded }) {
   const toast               = useToast();
@@ -11,7 +11,7 @@ function RefundModal({ payment, onClose, onRefunded }) {
     setLoading(true);
     try {
       const body = amount ? { amount: Math.round(parseFloat(amount) * 100) } : {};
-      const r    = await client.post(`/admin/payments/${payment.id}/refund`, body);
+      const r    = await adminClient.post(`/admin/payments/${payment.id}/refund`, body);
       onRefunded(r.data.data);
       toast.success('Refund issued successfully.');
       onClose();
@@ -92,7 +92,7 @@ export default function AdminPayments() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, ...(statusFilter ? { status: statusFilter } : {}) });
-      const r = await client.get(`/admin/payments?${params}`);
+      const r = await adminClient.get(`/admin/payments?${params}`);
       const payload = r.data.data;
       setPayments(payload.data ?? []);
       setMeta({ total: payload.total, lastPage: payload.last_page, currentPage: payload.current_page });

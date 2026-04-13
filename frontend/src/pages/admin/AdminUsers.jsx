@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import client from '../../api/client';
+import adminClient from '../../api/adminClient';
 
 const BADGE = {
   role: {
@@ -33,13 +33,13 @@ function Badge({ type, value }) {
 
 function EditModal({ user, onClose, onSaved }) {
   const toast                   = useToast();
-  const [form, setForm]         = useState({ role: user.role, status: user.status });
+  const [form, setForm]         = useState({ status: user.status });
   const [loading, setLoading]   = useState(false);
 
   const save = async () => {
     setLoading(true);
     try {
-      const r = await client.patch(`/admin/users/${user.id}`, form);
+      const r = await adminClient.patch(`/admin/users/${user.id}`, form);
       onSaved(r.data.data);
       toast.success('User updated.');
       onClose();
@@ -65,7 +65,7 @@ function EditModal({ user, onClose, onSaved }) {
         </h3>
         <p style={{ fontSize: 11, color: '#8b949e', marginBottom: 20 }}>{user.email}</p>
 
-        {[['Role', 'role', ['user', 'admin']], ['Status', 'status', ['active', 'suspended']]].map(([label, field, opts]) => (
+        {[['Status', 'status', ['active', 'suspended']]].map(([label, field, opts]) => (
           <div key={field} style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', fontSize: 10, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>{label}</label>
             <select
@@ -116,7 +116,7 @@ export default function AdminUsers() {
   const [users, setUsers]   = useState([]);
   const [meta, setMeta]     = useState({});
   const [page, setPage]     = useState(1);
-  const [filters, setFilters] = useState({ search: '', role: '', status: '' });
+  const [filters, setFilters] = useState({ search: '', status: '' });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
 
@@ -124,7 +124,7 @@ export default function AdminUsers() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) });
-      const r = await client.get(`/admin/users?${params}`);
+      const r = await adminClient.get(`/admin/users?${params}`);
       const payload = r.data.data;
       setUsers(payload.data ?? []);
       setMeta({ total: payload.total, lastPage: payload.last_page, currentPage: payload.current_page });
@@ -139,7 +139,7 @@ export default function AdminUsers() {
 
   const impersonate = async (user) => {
     try {
-      const r = await client.post(`/admin/users/${user.id}/impersonate`);
+      const r = await adminClient.post(`/admin/users/${user.id}/impersonate`);
       const { token } = r.data.data;
       // Open app in new tab with impersonation token
       const url = `${window.location.origin}/?impersonate=${token}`;
@@ -163,7 +163,6 @@ export default function AdminUsers() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         {[
           ['search', 'text', 'Search name or email…', null],
-          ['role',   'select', null, ['', 'user', 'admin']],
           ['status', 'select', null, ['', 'active', 'suspended']],
         ].map(([field, type, placeholder, opts]) => (
           <div key={field}>
@@ -203,7 +202,7 @@ export default function AdminUsers() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['Name', 'Email', 'Role', 'Status', 'Plan', 'Joined', 'Actions'].map((h) => (
+                {['Name', 'Email', 'Status', 'Plan', 'Joined', 'Actions'].map((h) => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
               </tr>
@@ -213,7 +212,6 @@ export default function AdminUsers() {
                 <tr key={u.id} style={{ ':hover': { background: 'rgba(48,54,61,0.3)' } }}>
                   <td style={tdStyle}>{u.name}</td>
                   <td style={{ ...tdStyle, color: '#8b949e' }}>{u.email}</td>
-                  <td style={tdStyle}><Badge type="role" value={u.role} /></td>
                   <td style={tdStyle}><Badge type="status" value={u.status} /></td>
                   <td style={{ ...tdStyle, color: BADGE.plan[u.subscription_plan]?.color ?? '#484f58', textTransform: 'uppercase', fontSize: 10 }}>
                     {u.subscription_plan}
@@ -228,19 +226,17 @@ export default function AdminUsers() {
                     >
                       EDIT
                     </button>
-                    {u.role !== 'admin' && (
-                      <button
-                        onClick={() => impersonate(u)}
-                        style={{ background: 'none', border: '1px solid rgba(0,212,255,0.3)', borderRadius: 4, color: '#00d4ff', fontSize: 10, padding: '4px 8px', cursor: 'pointer' }}
-                      >
-                        IMPERSONATE
-                      </button>
-                    )}
+                    <button
+                      onClick={() => impersonate(u)}
+                      style={{ background: 'none', border: '1px solid rgba(0,212,255,0.3)', borderRadius: 4, color: '#00d4ff', fontSize: 10, padding: '4px 8px', cursor: 'pointer' }}
+                    >
+                      IMPERSONATE
+                    </button>
                   </td>
                 </tr>
               ))}
               {!users.length && (
-                <tr><td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#484f58' }}>No users found.</td></tr>
+                <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#484f58' }}>No users found.</td></tr>
               )}
             </tbody>
           </table>

@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Last updated: 2026-04-12 (session 3 — monetization foundations). Use this to onboard Claude Code in new sessions.
+> Last updated: 2026-04-13 (session 4 — separated admin auth, audit logging). Use this to onboard Claude Code in new sessions.
 
 ---
 
@@ -60,22 +60,26 @@ debris-monitor/
 │   │   │   │   ├── WatchedSatelliteController.php
 │   │   │   │   ├── Auth/AuthController.php
 │   │   │   │   └── Admin/
+│   │   │   │       ├── AdminAuthController.php
 │   │   │   │       ├── AdminDashboardController.php
 │   │   │   │       ├── AdminUserController.php
 │   │   │   │       ├── AdminSubscriptionController.php
 │   │   │   │       ├── AdminPaymentController.php
 │   │   │   │       └── AdminApiKeyController.php
 │   │   │   └── Middleware/
-│   │   │       └── AuthenticateApiKey.php
+│   │   │       ├── AuthenticateApiKey.php
+│   │   │       └── EnsureIsAdmin.php  # blocks inactive admin accounts
 │   │   └── Models/
 │   │       ├── User.php
+│   │       ├── AdminAccount.php       # separate admin_accounts table
+│   │       ├── AdminAuditLog.php      # audit_log table; AdminAuditLog::record()
 │   │       ├── ApiKey.php
 │   │       ├── ApiUsage.php
 │   │       ├── ConjunctionAlert.php
 │   │       ├── WatchedSatellite.php
 │   │       ├── Subscription.php
 │   │       └── Payment.php
-│   ├── database/migrations/    # 8 migrations total
+│   ├── database/migrations/    # 10 migrations total
 │   ├── routes/
 │   │   ├── api.php
 │   │   ├── web.php
@@ -93,6 +97,7 @@ debris-monitor/
 │   │   │   ├── ResetPassword.jsx
 │   │   │   ├── UserDashboard.jsx
 │   │   │   └── admin/
+│   │   │       ├── AdminLogin.jsx       # admin-only login page
 │   │   │       ├── AdminDashboard.jsx
 │   │   │       ├── AdminUsers.jsx
 │   │   │       ├── AdminSubscriptions.jsx
@@ -103,14 +108,16 @@ debris-monitor/
 │   │   ├── ConjunctionAlerts.jsx
 │   │   ├── components/
 │   │   │   ├── ProtectedRoute.jsx
-│   │   │   └── AdminRoute.jsx
+│   │   │   └── AdminRoute.jsx           # uses AdminAuthContext
 │   │   ├── contexts/
 │   │   │   ├── AuthContext.jsx
+│   │   │   ├── AdminAuthContext.jsx     # separate admin session state
 │   │   │   └── ToastContext.jsx
 │   │   ├── api/
-│   │   │   └── client.js       # axios instance with interceptors
+│   │   │   ├── client.js       # customer axios instance (dm_token)
+│   │   │   └── adminClient.js  # admin axios instance (dm_admin_token)
 │   │   └── layouts/
-│   │       └── AdminLayout.jsx
+│   │       └── AdminLayout.jsx          # uses AdminAuthContext for logout
 │   ├── Dockerfile              # multi-stage: node builder → nginx
 │   ├── Dockerfile.dev          # dev only, Vite HMR
 │   └── vite.config.js
@@ -205,8 +212,16 @@ DELETE /api/watch/{id}
 GET    /api/alerts
 ```
 
-### Admin only (Sanctum + role=admin)
+### Admin auth (public — throttle: 3/min per IP)
 ```
+POST   /api/admin/auth/login
+```
+
+### Admin protected (admin Sanctum token — auth:admin guard)
+```
+POST   /api/admin/auth/logout
+GET    /api/admin/auth/me
+
 GET    /api/admin/dashboard
 GET    /api/admin/users
 GET    /api/admin/users/{id}
@@ -275,18 +290,31 @@ Defined via Controller helpers + exception renderer overrides in `bootstrap/app.
 
 ## Auth Architecture
 
-- **User auth**: Sanctum bearer tokens stored in `localStorage` (key: `dm_token`)
-- **API key auth**: handled inside `HandlePublicRequest` middleware (was separate `AuthenticateApiKey`)
-- **Guest sessions**: UUID stored in `localStorage` (key: `dm_guest_id`), sent as `X-Guest-ID` header
-- **Role system**: `role` enum on `users` table (`user` | `admin`), no Spatie package
-- **Token flow**: login → `personal_access_tokens` row → bearer token in Authorization header
-- **Frontend**: `AuthContext` restores session from localStorage on mount; `useAuth()` hook exposes `{ user, loading, login, register, logout, refreshUser }`
-- **Globe + tracker**: public, no auth required. ALERTS tab requires auth (gated in MainApp).
-- **Axios interceptors** in `src/api/client.js`:
-  - Request: attaches bearer token OR X-Guest-ID header (mutually exclusive)
-  - Response 401: clears token, redirects to /login
-  - Response 429 with `GUEST_LIMIT_REACHED`: distinct error type for upgrade CTA
-  - All errors normalized to `{ type, code, message, details }`
+### Customer Auth
+- Sanctum bearer tokens stored in `localStorage` (key: `dm_token`)
+- Token flow: login → `personal_access_tokens` (tokenable_type=User) → Authorization header
+- `AuthContext` restores session on mount; `useAuth()` exposes `{ user, loading, login, register, logout, refreshUser }`
+- Axios client: `src/api/client.js` — attaches `dm_token` OR `X-Guest-ID` (mutually exclusive)
+- Response 401: clears token, redirects to `/login`
+
+### Admin Auth (SEPARATE — fully isolated from customer auth)
+- Admins live in `admin_accounts` table — NOT in `users` table
+- Sanctum `admin` guard (driver: sanctum, provider: admin_accounts) — only accepts tokens where `tokenable_type = AdminAccount`
+- Admin tokens stored in `localStorage` (key: `dm_admin_token`)
+- Token flow: `/api/admin/auth/login` → `personal_access_tokens` (tokenable_type=AdminAccount) → Authorization header
+- `AdminAuthContext.jsx` manages admin session; `useAdminAuth()` exposes `{ admin, loading, login, logout }`
+- Separate axios client: `src/api/adminClient.js` — attaches `dm_admin_token`, 401 redirects to `/admin/login`
+- Route protection: `auth:admin` middleware (built-in Laravel auth) + `admin` alias (`EnsureIsAdmin` — blocks `is_active=false`)
+- Rate limiting: 3 login attempts/min per IP (`throttle:admin-login`)
+- Audit logging: every privileged action written to `admin_audit_logs` via `AdminAuditLog::record()`
+
+### Guest Sessions
+- UUID stored in `localStorage` (key: `dm_guest_id`), sent as `X-Guest-ID` header
+- Tracked via `guest_usage` table; 10 analyses/day limit
+
+### API Key Auth
+- Handled inside `HandlePublicRequest` middleware
+- `X-API-Key` header or `?api_key=` query param; tier-based rate limits
 
 ---
 
@@ -303,10 +331,13 @@ Defined via Controller helpers + exception renderer overrides in `bootstrap/app.
                           CATALOG + TRACKER: always visible
                           ALERTS tab: shows AlertsAuthGate for unauthenticated users
 
-(ProtectedRoute — requires auth token:)
+(ProtectedRoute — requires customer auth token:)
 /dashboard            → UserDashboard (API keys, billing, watched sats)
 
-(AdminRoute — requires auth + role=admin:)
+(public admin login:)
+/admin/login          → AdminLogin (posts to /api/admin/auth/login)
+
+(AdminRoute — requires admin token in dm_admin_token:)
 /admin                → AdminDashboard
 /admin/users          → AdminUsers
 /admin/subscriptions  → AdminSubscriptions
@@ -333,6 +364,8 @@ BACKEND_URL=http://backend:8000       # Docker-only, for Vite proxy (not exposed
 | Model | Key relationships |
 |---|---|
 | `User` | hasMany ApiKey, hasMany WatchedSatellite, hasOne Subscription, hasMany Payment; `currentPlan()` |
+| `AdminAccount` | HasApiTokens (Sanctum admin guard); `isActive()`. **Table**: `admin_accounts` |
+| `AdminAuditLog` | belongsTo AdminAccount; `record(adminId, action, targetType?, targetId?, metadata[])` static. **Table**: `admin_audit_logs` |
 | `ApiKey` | belongsTo User, hasMany ApiUsage; `tierDefaults()` static. **Table**: `api_keys` |
 | `ApiUsage` | belongsTo ApiKey. **Table**: `api_usage` (explicit — Eloquent would default to `api_usages`) |
 | `GuestUsage` | no relationships; `todayCount(identifier)`, `record(identifier)` static helpers. **Table**: `guest_usage` (explicit) |
@@ -349,7 +382,9 @@ BACKEND_URL=http://backend:8000       # Docker-only, for Vite proxy (not exposed
 
 | Table | Key columns |
 |---|---|
-| `users` | id, name, email, password, role (enum: user/admin), addons (JSON, nullable), status, suspended_at |
+| `users` | id, name, email, password, role (enum: user/admin — legacy, no longer used for admin access), addons (JSON, nullable), status, suspended_at |
+| `admin_accounts` | id, name, email, password, is_active (bool), mfa_secret (nullable — TOTP extension point), last_login_at |
+| `admin_audit_logs` | id, admin_account_id, action, target_type, target_id, metadata (JSON), ip, created_at (immutable — no updated_at) |
 | `api_keys` | id, user_id, name, key (unique), tier, daily_limit, webhooks_enabled, satellite_limit, last_used_at, expires_at, soft_deletes |
 | `api_usage` | id, api_key_id, endpoint, method, status_code, response_ms, ip, created_at (no updated_at) |
 | `guest_usage` | id, identifier (guest UUID or IP), date, count; unique(identifier, date) |
@@ -415,9 +450,12 @@ User's upcoming conjunction alerts for their watched satellites.
 ## Admin Panel
 
 - Dark theme matching globe app (Orbitron + JetBrains Mono, `#0d1117`, `#00d4ff`)
-- `AdminLayout.jsx` wraps all admin pages
-- `AdminRoute` component checks `user.role === 'admin'`
-- Pages: dashboard stats, user management (suspend/activate), subscription list, payment list + refund, API key overview
+- `AdminLayout.jsx` wraps all admin pages; uses `useAdminAuth()` for logout/identity display
+- `AdminRoute` checks `AdminAuthContext` admin token (NOT user role)
+- Login: `/admin/login` → `POST /api/admin/auth/login` → stores `dm_admin_token`
+- Pages: dashboard stats, user management (suspend/activate only — role editing removed), subscription list, payment list + refund, API key overview
+- All admin pages use `adminClient.js` (not `client.js`) to send `dm_admin_token`
+- Audit log written for: login, logout, impersonate, user.active, user.suspended, payment.refund
 
 ---
 
@@ -432,7 +470,7 @@ Used on `/api/satellites/*` and `/api/conjunctions/*`. Resolves actor in priorit
 Sets request attributes: `actor_type`, `actor`, `entitlements`
 
 ### EnsureIsAdmin
-Checks `auth()->user()->isAdmin()`. Applied to all `/api/admin/*` routes.
+Checks `auth('admin')->user()?->isActive()`. Applied AFTER `auth:admin` (which verifies the token). Blocks `is_active=false` admin accounts with 403. Admin routes use middleware stack: `['auth:admin', 'admin']`.
 
 ---
 
@@ -586,13 +624,19 @@ TLE groups:
 - [x] BillingController::subscribe() — validation uses EntitlementService::paidPlanKeys() (no hardcoded strings)
 - [x] SubscriptionFactory + PaymentFactory — for test fixtures
 - [x] HasFactory added to Subscription + Payment models
-- [x] AdminUserSeeder — idempotent (firstOrCreate) admin user: admin@debris.monitor / admin
+- [x] AdminAccountSeeder — idempotent (firstOrCreate) admin in admin_accounts: admin@debris.monitor / admin
 - [x] BillingTest.php — 13 tests: plan resolution, subscribe/cancel, payment history, auth guards
 - [x] EntitlementTest.php — 14 tests: all actor types, add-on merging, catalog shape, capability checks
 - [x] ApiUsage: explicit $table = 'api_usage' (Eloquent would default to api_usages — bug fixed)
 - [x] GuestUsage: explicit $table = 'guest_usage' (same fix)
 - [x] Globe MainApp: REGISTER + SIGN IN buttons top-left for guests; DASHBOARD + SIGN OUT for authenticated users
 - [x] UserDashboard BillingTab: API-driven plan cards (no hardcoded PLANS), entitlement summary badges, payment history section
+- [x] Admin auth separation: admin_accounts table, AdminAccount model, auth:admin Sanctum guard, AdminAuditLog
+- [x] AdminAuthController: POST /api/admin/auth/login (3/min rate limit), logout, me
+- [x] AdminAuthContext + adminClient.js — isolated from customer auth/axios
+- [x] AdminLogin.jsx — dedicated admin login page at /admin/login
+- [x] AdminRoute updated — checks AdminAuthContext (not user.role)
+- [x] All admin pages switched to adminClient; role editing removed from AdminUsers
 
 ---
 

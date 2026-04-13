@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import client from '../../api/client';
+import adminClient from '../../api/adminClient';
 
 const TIER_COLOR = { enterprise: '#3fb950', pro: '#00d4ff', starter: '#d29922', free: '#484f58' };
 
@@ -16,7 +16,7 @@ export default function AdminApiKeys() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, ...(filters.tier ? { tier: filters.tier } : {}) });
-      const r = await client.get(`/admin/api-keys?${params}`);
+      const r = await adminClient.get(`/admin/api-keys?${params}`);
       const payload = r.data.data;
       setKeys(payload.data ?? []);
       setMeta({ total: payload.total, lastPage: payload.last_page, currentPage: payload.current_page });

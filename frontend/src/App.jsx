@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useSe
 import ReactGA from 'react-ga4';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AdminAuthProvider } from './contexts/AdminAuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
@@ -18,6 +19,7 @@ import ResetPassword from './pages/ResetPassword';
 import UserDashboard from './pages/UserDashboard';
 
 // Admin pages
+import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminSubscriptions from './pages/admin/AdminSubscriptions';
@@ -211,9 +213,16 @@ export default function App() {
               </ImpersonationHandler>
             } />
 
-            {/* Admin panel — admin role required */}
+            {/* Admin panel — separate admin auth */}
+            <Route path="/admin/login" element={
+              <AdminAuthProvider>
+                <AdminLogin />
+              </AdminAuthProvider>
+            } />
             <Route path="/admin" element={
-              <AdminRoute><AdminLayout /></AdminRoute>
+              <AdminAuthProvider>
+                <AdminRoute><AdminLayout /></AdminRoute>
+              </AdminAuthProvider>
             }>
               <Route index element={<AdminDashboard />} />
               <Route path="users"         element={<AdminUsers />} />

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import client from '../../api/client';
+import adminClient from '../../api/adminClient';
 
 function StatCard({ label, value, sub, color }) {
   return (
@@ -79,7 +79,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    client.get('/admin/dashboard')
+    adminClient.get('/admin/dashboard')
       .then((r) => setStats(r.data.data))
       .catch(() => toast.error('Failed to load dashboard stats'))
       .finally(() => setLoading(false));

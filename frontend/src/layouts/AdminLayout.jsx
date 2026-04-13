@@ -1,17 +1,17 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAdminAuth } from '../contexts/AdminAuthContext';
 
 const NAV_ITEMS = [
-  { to: '/admin',              label: 'Dashboard', icon: '⬡', end: true },
-  { to: '/admin/users',        label: 'Users',     icon: '◉' },
-  { to: '/admin/subscriptions',label: 'Subscriptions', icon: '◈' },
-  { to: '/admin/payments',     label: 'Payments',  icon: '◆' },
-  { to: '/admin/api-keys',     label: 'API Keys',  icon: '◐' },
+  { to: '/admin',               label: 'Dashboard',     icon: '⬡', end: true },
+  { to: '/admin/users',         label: 'Users',         icon: '◉' },
+  { to: '/admin/subscriptions', label: 'Subscriptions', icon: '◈' },
+  { to: '/admin/payments',      label: 'Payments',      icon: '◆' },
+  { to: '/admin/api-keys',      label: 'API Keys',      icon: '◐' },
 ];
 
 export default function AdminLayout() {
-  const { user, logout } = useAuth();
-  const navigate         = useNavigate();
+  const { admin, logout } = useAdminAuth();
+  const navigate          = useNavigate();
 
   return (
     <div style={{
@@ -55,6 +55,11 @@ export default function AdminLayout() {
           <div style={{ fontSize: 9, color: '#484f58', letterSpacing: '0.15em', marginTop: 3 }}>
             ADMIN PANEL
           </div>
+          {admin && (
+            <div style={{ fontSize: 9, color: '#8b949e', marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {admin.email}
+            </div>
+          )}
         </div>
 
         {/* Nav */}

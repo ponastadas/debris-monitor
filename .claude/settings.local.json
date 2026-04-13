@@ -11,7 +11,11 @@
       "Bash(ls:*)",
       "Bash(curl -s http://localhost:8000/api/debug-env)",
       "Bash(git add:*)",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Bash(curl -s -X POST http://localhost:8000/api/admin/auth/login -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{\"email\":\"admin@debris.monitor\",\"password\":\"admin\"}')",
+      "Bash(curl -s http://localhost:8000/api/admin/dashboard -H 'Authorization: Bearer 4|XeQ7Hg3c1DXfV1op4BFkF24Yf8apJD9cRpXiGuzZ0a160342' -H 'Accept: application/json')",
+      "Bash(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"test@example.com\",\"password\":\"password123\"}')",
+      "Bash(curl -s http://localhost:8000/api/admin/auth/me -H 'Authorization: Bearer 4|XeQ7Hg3c1DXfV1op4BFkF24Yf8apJD9cRpXiGuzZ0a160342' -H 'Accept: application/json')"
     ]
   }
 }

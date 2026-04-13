@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
-import client from '../../api/client';
+import adminClient from '../../api/adminClient';
 
 const PLAN_COLOR = { enterprise: '#3fb950', pro: '#00d4ff', starter: '#d29922', free: '#484f58' };
 const STATUS_COLOR = { active: '#3fb950', canceled: '#f85149', past_due: '#d29922' };
@@ -17,7 +17,7 @@ export default function AdminSubscriptions() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) });
-      const r = await client.get(`/admin/subscriptions?${params}`);
+      const r = await adminClient.get(`/admin/subscriptions?${params}`);
       const payload = r.data.data;
       setSubs(payload.data ?? []);
       setMeta({ total: payload.total, lastPage: payload.last_page, currentPage: payload.current_page });
