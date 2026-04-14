@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminApiKeyController;
+use App\Http\Controllers\Admin\AdminAuditLogController;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AdminMfaController;
 use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminSubscriptionController;
 use App\Http\Controllers\Admin\AdminUserController;
@@ -29,9 +31,11 @@ Route::get('/health', fn () => response()->json([
     'time'   => now()->toIso8601String(),
 ]));
 
-// ── Customer authentication (rate-limited: 5/min per IP) ─────────────────────
+// ── Customer authentication ────────────────────────────────────────────────────
+// Registration has its own limiter so it can be tuned independently of login.
+Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:registration');
+
 Route::prefix('auth')->middleware('throttle:auth')->group(function () {
-    Route::post('/register',        [AuthController::class, 'register']);
     Route::post('/login',           [AuthController::class, 'login']);
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password',  [AuthController::class, 'resetPassword']);
@@ -69,9 +73,20 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // ── Admin authentication (public — stricter rate limit: 3/min per IP) ────────
+// All routes in this group are part of the admin auth flow; none issues a
+// session token until credentials + MFA (or forced MFA setup) succeed.
 Route::prefix('admin/auth')->middleware('throttle:admin-login')->group(function () {
-    Route::post('/login', [AdminAuthController::class, 'login']);
+    Route::post('/login',            [AdminAuthController::class, 'login']);
+
+    // Forced MFA setup flow — only valid with a setup_token issued by /login
+    // when the admin account has no MFA configured.
+    Route::post('/mfa/setup-init',     [AdminAuthController::class, 'setupInit']);
+    Route::post('/mfa/setup-finalize', [AdminAuthController::class, 'setupFinalize']);
 });
+
+// Admin MFA verification step (separate rate limiter: 5/15min per IP)
+Route::post('/admin/auth/mfa/verify', [AdminAuthController::class, 'mfaVerify'])
+    ->middleware('throttle:admin-mfa');
 
 // ── Admin panel (admin Sanctum token required) ────────────────────────────────
 // auth:admin validates the Bearer token against the admin_accounts table.
@@ -93,6 +108,15 @@ Route::prefix('admin')->middleware(['auth:admin', 'admin'])->group(function () {
     Route::post('/payments/{payment}/refund', [AdminPaymentController::class, 'refund']);
 
     Route::get('/api-keys',                   [AdminApiKeyController::class, 'index']);
+
+    Route::get('/audit-log',                  [AdminAuditLogController::class, 'index']);
+
+    // MFA management (requires existing admin session)
+    Route::prefix('auth/mfa')->group(function () {
+        Route::get('/setup',    [AdminMfaController::class, 'setup']);
+        Route::post('/confirm', [AdminMfaController::class, 'confirm']);
+        Route::delete('/',      [AdminMfaController::class, 'disable']);
+    });
 });
 
 // ── Stripe webhook ─────────────────────────────────────────────────────────────

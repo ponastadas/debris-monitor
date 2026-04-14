@@ -13,7 +13,7 @@ use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'email', 'password', 'role', 'addons', 'status', 'suspended_at'])]
+#[Fillable(['name', 'email', 'password', 'addons', 'status', 'suspended_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -38,11 +38,6 @@ class User extends Authenticatable
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
-    }
-
-    public function isAdmin(): bool
-    {
-        return $this->role === 'admin';
     }
 
     public function isActive(): bool

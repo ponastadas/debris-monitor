@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AdminAccount;
 use App\Models\ApiKey;
 use App\Models\GuestUsage;
 use App\Models\User;
@@ -184,22 +185,24 @@ it('requires authentication for profile endpoints', function () {
     $this->getJson('/api/auth/me')->assertUnauthorized();
 });
 
-it('blocks a regular user from admin endpoints', function () {
-    $user  = User::factory()->create(['role' => 'user']);
+it('blocks a regular user token from admin endpoints', function () {
+    // Customer tokens are issued against the users table (tokenable_type=User).
+    // The auth:admin guard only accepts AdminAccount tokens — user tokens get 401.
+    $user  = User::factory()->create();
     $token = $user->createToken('test')->plainTextToken;
 
     $this->withToken($token)
          ->getJson('/api/admin/dashboard')
-         ->assertForbidden();
+         ->assertUnauthorized();
 });
 
 it('blocks unauthenticated requests from admin endpoints', function () {
     $this->getJson('/api/admin/dashboard')->assertUnauthorized();
 });
 
-it('allows an admin user to access admin endpoints', function () {
-    $admin = User::factory()->create(['role' => 'admin']);
-    $token = $admin->createToken('test')->plainTextToken;
+it('allows an admin account token to access admin endpoints', function () {
+    $admin = AdminAccount::factory()->create();
+    $token = $admin->createToken('admin-session')->plainTextToken;
 
     $this->withToken($token)
          ->getJson('/api/admin/dashboard')
