@@ -101,6 +101,8 @@ jobs:
             git pull origin develop
             docker compose -f docker-compose.staging.yml pull
             docker compose -f docker-compose.staging.yml up -d --remove-orphans
+            mkdir -p ~/backups
+            docker compose -f docker-compose.staging.yml exec -T db sh -c 'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' > ~/backups/pre-deploy-$(date +%Y%m%d%H%M%S).sql
             docker compose -f docker-compose.staging.yml exec -T backend php artisan migrate --force
             docker image prune -f
             echo "Staging deployed at $(date)"
@@ -131,6 +133,8 @@ jobs:
             git pull origin main
             docker compose pull
             docker compose up -d --remove-orphans
+            mkdir -p ~/backups
+            docker compose exec -T db sh -c 'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' > ~/backups/pre-deploy-$(date +%Y%m%d%H%M%S).sql
             docker compose exec -T backend php artisan migrate --force
             docker compose exec -T backend php artisan config:cache
             docker compose exec -T backend php artisan route:cache

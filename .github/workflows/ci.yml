@@ -88,6 +88,9 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: secret
 
+      - name: Audit PHP dependencies for known vulnerabilities
+        run: composer audit
+
       - name: Run tests
         run: php artisan test --parallel
         env:
@@ -142,6 +145,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit JS dependencies for known vulnerabilities
+        run: npm audit --audit-level=high
 
       - name: Run tests
         run: npm run test
