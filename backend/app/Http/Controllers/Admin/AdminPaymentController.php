@@ -56,7 +56,7 @@ class AdminPaymentController extends Controller
 
         AdminAuditLog::record(
             $admin->id,
-            'payment.refund',
+            AdminAuditLog::PAYMENT_REFUNDED,
             'Payment',
             $payment->id,
             [
