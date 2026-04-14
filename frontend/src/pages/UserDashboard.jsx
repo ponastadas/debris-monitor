@@ -493,11 +493,6 @@ export default function UserDashboard() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 12, color: '#8b949e' }}>{user?.email}</span>
-          {user?.role === 'admin' && (
-            <button style={{ ...S.btn(true), fontSize: 10 }} onClick={() => navigate('/admin')}>
-              ADMIN
-            </button>
-          )}
           <button style={{ ...S.btn(false), fontSize: 10, color: '#f85149', borderColor: 'rgba(248,81,73,0.3)' }} onClick={logout}>
             SIGN OUT
           </button>
