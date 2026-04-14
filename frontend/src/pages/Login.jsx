@@ -43,7 +43,7 @@ export default function Login() {
     setLoading(true);
     try {
       const user = await login(form.email, form.password);
-      navigate(user.role === 'admin' ? '/admin' : '/', { replace: true });
+      navigate('/', { replace: true });
     } catch (err) {
       if (err.type === 'VALIDATION') {
         setErrors(err.details ?? {});
