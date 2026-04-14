@@ -47,8 +47,7 @@ class AdminUserController extends Controller
     public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
         $admin = auth('admin')->user();
-
-        $data = $request->only(['name', 'status']);
+        $data  = $request->only(['name', 'status']);
 
         if (isset($data['status']) && $data['status'] === 'suspended' && $user->status !== 'suspended') {
             $data['suspended_at'] = now();
@@ -58,13 +57,27 @@ class AdminUserController extends Controller
 
         $user->update($data);
 
+        // Log a targeted status event when status changed; otherwise log a
+        // generic user.updated for field-level changes (e.g. name only).
         if (isset($data['status'])) {
+            $action = $data['status'] === 'suspended'
+                ? AdminAuditLog::USER_SUSPENDED
+                : AdminAuditLog::USER_ACTIVATED;
+
             AdminAuditLog::record(
                 $admin->id,
-                'user.' . $data['status'],
+                $action,
                 'User',
                 $user->id,
                 ['email' => $user->email],
+            );
+        } else {
+            AdminAuditLog::record(
+                $admin->id,
+                AdminAuditLog::USER_UPDATED,
+                'User',
+                $user->id,
+                ['email' => $user->email, 'fields' => array_keys($data)],
             );
         }
 
@@ -75,11 +88,13 @@ class AdminUserController extends Controller
     {
         $admin = auth('admin')->user();
 
-        $token = $user->createToken('impersonation')->plainTextToken;
+        // Impersonation tokens expire in 1 hour. They are delivered in the JSON
+        // response body only — never via a URL parameter.
+        $token = $user->createToken('impersonation', ['*'], now()->addHour())->plainTextToken;
 
         AdminAuditLog::record(
             $admin->id,
-            'impersonate',
+            AdminAuditLog::IMPERSONATION_STARTED,
             'User',
             $user->id,
             ['target_email' => $user->email],

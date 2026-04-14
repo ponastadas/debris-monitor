@@ -142,7 +142,6 @@ class AuthController extends Controller
             'id'                => $user->id,
             'name'              => $user->name,
             'email'             => $user->email,
-            'role'              => $user->role ?? 'user',
             'status'            => $user->status ?? 'active',
             'subscription_plan' => $user->currentPlan(),
             'created_at'        => $user->created_at?->toIso8601String(),
