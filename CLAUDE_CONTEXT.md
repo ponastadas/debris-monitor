@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Last updated: 2026-04-13 (session 4 — separated admin auth, audit logging). Use this to onboard Claude Code in new sessions.
+> Last updated: 2026-04-14 (session 10 — security hardening Phase 1). Use this to onboard Claude Code in new sessions.
 
 ---
 
@@ -61,6 +61,7 @@ debris-monitor/
 │   │   │   │   ├── Auth/AuthController.php
 │   │   │   │   └── Admin/
 │   │   │   │       ├── AdminAuthController.php
+│   │   │   │       ├── AdminMfaController.php       # MFA setup/confirm/disable
 │   │   │   │       ├── AdminDashboardController.php
 │   │   │   │       ├── AdminUserController.php
 │   │   │   │       ├── AdminSubscriptionController.php
@@ -71,7 +72,7 @@ debris-monitor/
 │   │   │       └── EnsureIsAdmin.php  # blocks inactive admin accounts
 │   │   └── Models/
 │   │       ├── User.php
-│   │       ├── AdminAccount.php       # separate admin_accounts table
+│   │       ├── AdminAccount.php       # separate admin_accounts table; observer auto-revokes tokens on deactivation
 │   │       ├── AdminAuditLog.php      # audit_log table; AdminAuditLog::record()
 │   │       ├── ApiKey.php
 │   │       ├── ApiUsage.php
@@ -102,7 +103,8 @@ debris-monitor/
 │   │   │       ├── AdminUsers.jsx
 │   │   │       ├── AdminSubscriptions.jsx
 │   │   │       ├── AdminPayments.jsx
-│   │   │       └── AdminApiKeys.jsx
+│   │   │       ├── AdminApiKeys.jsx
+│   │   │       └── AdminAuditLog.jsx    # audit log viewer: filter by action/date, paginated
 │   │   ├── DebrisMonitor.jsx   # full catalog globe (main view)
 │   │   ├── SatelliteTracker.jsx
 │   │   ├── ConjunctionAlerts.jsx
@@ -215,12 +217,23 @@ GET    /api/alerts
 ### Admin auth (public — throttle: 3/min per IP)
 ```
 POST   /api/admin/auth/login
+POST   /api/admin/auth/mfa/setup-init      {setup_token}         → {qr_code, secret}
+POST   /api/admin/auth/mfa/setup-finalize  {setup_token, code}   → {token, admin, recovery_codes}
+```
+
+### Admin MFA verify (public — throttle: 5/15min per IP)
+```
+POST   /api/admin/auth/mfa/verify   {mfa_token, code}
 ```
 
 ### Admin protected (admin Sanctum token — auth:admin guard)
 ```
 POST   /api/admin/auth/logout
 GET    /api/admin/auth/me
+
+GET    /api/admin/auth/mfa/setup    → {qr_code (base64 SVG), secret}
+POST   /api/admin/auth/mfa/confirm  {code} → {recovery_codes}
+DELETE /api/admin/auth/mfa          {password}
 
 GET    /api/admin/dashboard
 GET    /api/admin/users
@@ -231,6 +244,7 @@ GET    /api/admin/subscriptions
 GET    /api/admin/payments
 POST   /api/admin/payments/{id}/refund
 GET    /api/admin/api-keys
+GET    /api/admin/audit-log   ?action=&admin_id=&from=&to=&page=
 ```
 
 ### Satellite/conjunction — HandlePublicRequest (guest · Sanctum user · API key)
@@ -291,22 +305,43 @@ Defined via Controller helpers + exception renderer overrides in `bootstrap/app.
 ## Auth Architecture
 
 ### Customer Auth
-- Sanctum bearer tokens stored in `localStorage` (key: `dm_token`)
+- Normal sessions: Sanctum bearer tokens in `localStorage` (key: `dm_token`)
+- Impersonation sessions: token delivered in JSON body by admin endpoint (never in URL), stored in `localStorage('dm_impersonate_pending')` by AdminUsers, immediately consumed by `ImpersonationHandler` into `sessionStorage('dm_token')` — tab-scoped, expires with the tab
+- `client.js` request interceptor reads `sessionStorage('dm_token') || localStorage('dm_token')`; on 401 clears both
+- `AuthContext` on mount: checks sessionStorage first, then localStorage; logout clears both
+- Impersonation token: server-issued with 1-hour expiry (Sanctum `createToken(..., now()->addHour())`)
 - Token flow: login → `personal_access_tokens` (tokenable_type=User) → Authorization header
 - `AuthContext` restores session on mount; `useAuth()` exposes `{ user, loading, login, register, logout, refreshUser }`
-- Axios client: `src/api/client.js` — attaches `dm_token` OR `X-Guest-ID` (mutually exclusive)
-- Response 401: clears token, redirects to `/login`
+- Axios client: `src/api/client.js` — attaches `dm_token` (session or impersonation) OR `X-Guest-ID` (mutually exclusive)
+- Response 401: clears sessionStorage + localStorage token, redirects to `/login`
 
 ### Admin Auth (SEPARATE — fully isolated from customer auth)
 - Admins live in `admin_accounts` table — NOT in `users` table
-- Sanctum `admin` guard (driver: sanctum, provider: admin_accounts) — only accepts tokens where `tokenable_type = AdminAccount`
+- `sanctum` guard explicitly configured with `provider: users` — AdminAccount tokens are rejected with 401 (not 500)
+- `admin` guard configured with `provider: admin_accounts` — only accepts tokens where `tokenable_type = AdminAccount`
 - Admin tokens stored in `localStorage` (key: `dm_admin_token`)
 - Token flow: `/api/admin/auth/login` → `personal_access_tokens` (tokenable_type=AdminAccount) → Authorization header
 - `AdminAuthContext.jsx` manages admin session; `useAdminAuth()` exposes `{ admin, loading, login, logout }`
 - Separate axios client: `src/api/adminClient.js` — attaches `dm_admin_token`, 401 redirects to `/admin/login`
 - Route protection: `auth:admin` middleware (built-in Laravel auth) + `admin` alias (`EnsureIsAdmin` — blocks `is_active=false`)
-- Rate limiting: 3 login attempts/min per IP (`throttle:admin-login`)
+- Rate limiting: 3 login attempts/min per IP (`throttle:admin-login`); MFA verify: 5/15min (`throttle:admin-mfa`)
 - Audit logging: every privileged action written to `admin_audit_logs` via `AdminAuditLog::record()`
+  - Event catalog: constants on `AdminAuditLog` — never ad-hoc strings (LOGIN_SUCCESS, LOGIN_FAILED, LOGIN_FAILED_INACTIVE, LOGOUT, IMPERSONATION_STARTED, USER_UPDATED, USER_SUSPENDED, USER_ACTIVATED, PAYMENT_REFUNDED, SUBSCRIPTION_UPDATED, API_KEY_REVOKED, MFA_ENABLED, MFA_DISABLED, MFA_CHALLENGE_PASSED, MFA_CHALLENGE_FAILED, MFA_RECOVERY_USED)
+  - Schema: id, admin_account_id (nullable FK), action, target_type, target_id, metadata (JSON), ip, user_agent, created_at (immutable)
+  - `admin_account_id` nullable — allows recording login failures with unknown email (null actor)
+  - Query scopes: `forAction(string)`, `forActor(int)`, `recent(int $limit = 50)` — chainable
+- Token revocation: `AdminAccountObserver::updating()` deletes all tokens immediately when `is_active` flips to `false`
+- MFA (TOTP — pragmarx/google2fa v9 + bacon/bacon-qr-code v3.1):
+  - `AdminAccount.hasMfa()` — checks mfa_secret; `mfa_secret` uses `encrypted` cast; `mfa_recovery_codes` uses `encrypted:array` cast
+  - Login: step 1 = credentials; if MFA configured → returns `{mfa_required: true, mfa_token: uuid}` (challenge stored in DB cache, 5min TTL); step 2 = POST /admin/auth/mfa/verify with `{mfa_token, code}` → issues session token
+  - Recovery codes: 8 × `XXXXX-XXXXX`, bcrypt-hashed for storage, normalized before comparison; consuming one removes it from the stored set
+  - `AdminMfaService` — generateSecret(), getQrUri(), generateQrBase64(), verify(), verifyWithSecret(), generateRecoveryCodes(), hashRecoveryCodes(), consumeRecoveryCode(), challengeKey(), pendingKey()
+  - `AdminMfaController`: GET /admin/auth/mfa/setup (generate pending secret → QR + plain secret), POST /admin/auth/mfa/confirm (verify code → persist + return recovery codes once), DELETE /admin/auth/mfa (disable, requires password)
+  - **MFA is enforced**: login never issues a session token until MFA passes; admin without MFA configured gets `{mfa_setup_required: true, setup_token: uuid}` (15min TTL) — must enroll before gaining access
+  - Forced setup routes (public, throttle:admin-login): `POST /admin/auth/mfa/setup-init {setup_token}` → `{qr_code, secret}`; `POST /admin/auth/mfa/setup-finalize {setup_token, code}` → `{token, admin, recovery_codes}`
+  - `AdminAuthContext` exposes: login(), verifyMfa(), setupMfaInit(), setupMfaFinalize(), completeLogin()
+  - `AdminLogin.jsx`: 4-step form — credentials → MFA verify (or recovery code) → forced setup (QR + TOTP scan) → recovery codes display
+  - `AdminAccount.jsx`: MFA setup/disable page at /admin/account (for already-authenticated admins)
 
 ### Guest Sessions
 - UUID stored in `localStorage` (key: `dm_guest_id`), sent as `X-Guest-ID` header
@@ -343,6 +378,8 @@ Defined via Controller helpers + exception renderer overrides in `bootstrap/app.
 /admin/subscriptions  → AdminSubscriptions
 /admin/payments       → AdminPayments
 /admin/api-keys       → AdminApiKeys
+/admin/audit-log      → AdminAuditLog
+/admin/account        → AdminAccount (MFA setup/disable + sign out)
 ```
 
 ---
@@ -382,9 +419,9 @@ BACKEND_URL=http://backend:8000       # Docker-only, for Vite proxy (not exposed
 
 | Table | Key columns |
 |---|---|
-| `users` | id, name, email, password, role (enum: user/admin — legacy, no longer used for admin access), addons (JSON, nullable), status, suspended_at |
-| `admin_accounts` | id, name, email, password, is_active (bool), mfa_secret (nullable — TOTP extension point), last_login_at |
-| `admin_audit_logs` | id, admin_account_id, action, target_type, target_id, metadata (JSON), ip, created_at (immutable — no updated_at) |
+| `users` | id, name, email, password, addons (JSON, nullable), status, suspended_at |
+| `admin_accounts` | id, name, email, password, is_active (bool), mfa_secret (text, nullable, encrypted), mfa_recovery_codes (text, nullable, encrypted:array), last_login_at |
+| `admin_audit_logs` | id, admin_account_id (nullable FK — null for unknown-email failures), action, target_type, target_id, metadata (JSON), ip, user_agent, created_at (immutable — no updated_at) |
 | `api_keys` | id, user_id, name, key (unique), tier, daily_limit, webhooks_enabled, satellite_limit, last_used_at, expires_at, soft_deletes |
 | `api_usage` | id, api_key_id, endpoint, method, status_code, response_ms, ip, created_at (no updated_at) |
 | `guest_usage` | id, identifier (guest UUID or IP), date, count; unique(identifier, date) |
@@ -453,9 +490,9 @@ User's upcoming conjunction alerts for their watched satellites.
 - `AdminLayout.jsx` wraps all admin pages; uses `useAdminAuth()` for logout/identity display
 - `AdminRoute` checks `AdminAuthContext` admin token (NOT user role)
 - Login: `/admin/login` → `POST /api/admin/auth/login` → stores `dm_admin_token`
-- Pages: dashboard stats, user management (suspend/activate only — role editing removed), subscription list, payment list + refund, API key overview
+- Pages: dashboard stats, user management (suspend/activate only — role editing removed), subscription list, payment list + refund, API key overview, audit log viewer, account (MFA management)
 - All admin pages use `adminClient.js` (not `client.js`) to send `dm_admin_token`
-- Audit log written for: login, logout, impersonate, user.active, user.suspended, payment.refund
+- Audit log written for: login.success, login.failed, login.failed_inactive, logout, impersonation.started, user.updated, user.suspended, user.activated, payment.refunded, mfa.enabled, mfa.disabled, mfa.challenge_passed, mfa.challenge_failed, mfa.recovery_used
 
 ---
 
@@ -471,6 +508,18 @@ Sets request attributes: `actor_type`, `actor`, `entitlements`
 
 ### EnsureIsAdmin
 Checks `auth('admin')->user()?->isActive()`. Applied AFTER `auth:admin` (which verifies the token). Blocks `is_active=false` admin accounts with 403. Admin routes use middleware stack: `['auth:admin', 'admin']`.
+
+### SecurityHeaders (global — `bootstrap/app.php` `$middleware->append()`)
+Runs on every response. Sets:
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+
+### Rate limiters (AppServiceProvider)
+- `admin-login`: 3/min per IP — covers login + forced-setup routes
+- `admin-mfa`: 5 attempts per 15 min per IP — covers MFA verify
+- `auth`: 10/min per IP — covers login + password routes
+- `registration`: 5/min per IP — covers register only (separate from `auth`)
 
 ---
 
@@ -540,13 +589,17 @@ register, login (returns bearer token), logout, me (get/update), password change
 ### ci.yml (triggers on PR to main/develop, push to develop)
 ```
 backend-lint (Pint) → backend-test (Pest + MySQL service container)
+  - Includes: composer audit (PHP dependency CVE scan, fails build on any vulnerability)
 frontend-lint (ESLint) → frontend-test (Vitest) → frontend-build
+  - frontend-test includes: npm audit --audit-level=high (JS dependency CVE scan)
 ```
 
 ### cd.yml (triggers on push to develop or main)
 ```
 develop → build :staging images → deploy to staging via SSH
+  - Pre-migration backup: mysqldump → ~/backups/pre-deploy-<timestamp>.sql (via docker compose exec db)
 main    → build :latest images  → deploy to prod via SSH
+  - Pre-migration backup: mysqldump → ~/backups/pre-deploy-<timestamp>.sql (via docker compose exec db)
 ```
 
 Images pushed to GitHub Container Registry (ghcr.io).
@@ -637,6 +690,38 @@ TLE groups:
 - [x] AdminLogin.jsx — dedicated admin login page at /admin/login
 - [x] AdminRoute updated — checks AdminAuthContext (not user.role)
 - [x] All admin pages switched to adminClient; role editing removed from AdminUsers
+- [x] AdminAccountObserver — revokes all tokens immediately when is_active flips to false
+- [x] AdminAccountFactory + inactive() state — for test fixtures
+- [x] AdminAuthTest.php — 10 tests: login, wrong password, inactive account, token guard separation, deactivation revocation, logout
+- [x] users.role column dropped (migration 2026_04_13_000000); safety step demotes any role='admin' users first
+- [x] User::isAdmin() removed; role removed from #[Fillable] and from AuthController::userResource()
+- [x] AdminUserSeeder deleted (replaced by AdminAccountSeeder)
+- [x] sanctum guard explicitly configured with provider:users — AdminAccount tokens now 401 not 500 on customer routes
+- [x] Login.jsx: removed role-based redirect (admins use /admin/login, customers always go to /)
+- [x] UserDashboard.jsx: removed admin button that checked user.role
+- [x] App.jsx: unified AdminAuthProvider — single instance wraps both /admin/login and /admin/*
+- [x] AdminAuditLogController — GET /api/admin/audit-log, filters: action/admin_id/from/to, paginated 50/page, includes admin email+name
+- [x] AdminAuditLogListTest.php — 9 tests: auth guards, pagination shape, null-actor entries, action/admin_id/date filters, newest-first ordering
+- [x] AdminAuditLog.jsx — audit log page: action dropdown (all known events), date range filter, color-coded action badges, metadata summary, pagination; wired into nav + App.jsx routes
+- [x] AdminAuditLog: event catalog as class constants — no ad-hoc strings anywhere in audit calls
+- [x] AdminAuditLog: user_agent captured on every entry (migration 2026_04_13_000002)
+- [x] AdminAuditLog: query scopes forAction(), forActor(), recent() — chainable
+- [x] AdminAuditLog::record() accepts ?int $adminId — null actor valid for pre-auth failure events (migration 2026_04_13_000001)
+- [x] Event names normalized: login.success, login.failed, login.failed_inactive, logout, impersonation.started, user.updated, user.suspended, user.activated, payment.refunded
+- [x] user.updated logged for non-status field changes (e.g. name-only update)
+- [x] Null-safe fix: $admin?->id — PHP 8 throws TypeError on null->id before ?? applies
+- [x] AdminAuditLogTest.php — 16 tests: all event types, null-actor failure, user_agent capture, all 3 scopes + chaining, immutability
+- [x] TOTP MFA for admin accounts (pragmarx/google2fa v9 + bacon/bacon-qr-code v3.1)
+- [x] AdminMfaService — TOTP secret generation, QR code (SVG base64), verify, verifyWithSecret, recovery codes (8×XXXXX-XXXXX, bcrypt-hashed + encrypted:array), consumeRecoveryCode, challengeKey/pendingKey cache helpers
+- [x] AdminAccount: encrypted cast for mfa_secret, encrypted:array for mfa_recovery_codes, hasMfa(), mfa_recovery_codes in fillable
+- [x] Two-step login: credentials → if MFA → {mfa_required, mfa_token} (DB cache, 5min TTL) → POST /admin/auth/mfa/verify (throttle:admin-mfa 5/15min) → session token
+- [x] AdminMfaController: GET setup (QR+secret), POST confirm (verify TOTP → persist → return recovery codes once), DELETE disable (password required)
+- [x] MFA audit events: mfa.enabled, mfa.disabled, mfa.challenge_passed, mfa.challenge_failed, mfa.recovery_used
+- [x] AdminMfaTest.php — 22 tests: direct login (no MFA), challenge flow, TOTP verify, recovery code consume + remove + audit, invalid/expired tokens, setup QR/cache, confirm persist/audit/reject, disable clear/audit/reject-wrong-password
+- [x] AdminLogin.jsx — two-step form: step 1 credentials → step 2 TOTP code + recovery code toggle
+- [x] AdminAuthContext.jsx — login() handles mfa_required; verifyMfa(mfaToken, code) as new exported function
+- [x] AdminAccount.jsx — account page: profile info, MFA status badge, setup flow (QR → confirm → show recovery codes once), disable flow (password), sign out
+- [x] AdminLayout.jsx — added Account nav item (◑); App.jsx — added /admin/account route
 
 ---
 
