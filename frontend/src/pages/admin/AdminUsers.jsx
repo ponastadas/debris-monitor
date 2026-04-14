@@ -141,9 +141,10 @@ export default function AdminUsers() {
     try {
       const r = await adminClient.post(`/admin/users/${user.id}/impersonate`);
       const { token } = r.data.data;
-      // Open app in new tab with impersonation token
-      const url = `${window.location.origin}/?impersonate=${token}`;
-      window.open(url, '_blank');
+      // Store the token as a one-time pending key; the new tab will consume it
+      // immediately into sessionStorage so the token never appears in the URL.
+      localStorage.setItem('dm_impersonate_pending', token);
+      window.open('/', '_blank');
       toast.info(`Impersonating ${user.name}`);
     } catch (err) {
       toast.error(err.message ?? 'Impersonation failed.');

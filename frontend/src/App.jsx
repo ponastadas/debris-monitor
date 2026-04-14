@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import ReactGA from 'react-ga4';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -25,6 +25,8 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminSubscriptions from './pages/admin/AdminSubscriptions';
 import AdminPayments from './pages/admin/AdminPayments';
 import AdminApiKeys from './pages/admin/AdminApiKeys';
+import AdminAuditLog from './pages/admin/AdminAuditLog';
+import AdminAccount from './pages/admin/AdminAccount';
 
 // Existing globe/tracker views
 import ConjunctionAlerts from './ConjunctionAlerts';
@@ -50,17 +52,17 @@ function RouteTracker() {
 }
 
 // ── Impersonation token handler ──────────────────────────────────────────────
-// When admin opens ?impersonate=<token> the app picks it up, stores it, and reloads clean.
+// Admin panel writes the token to localStorage('dm_impersonate_pending') then opens
+// the app in a new tab. On load this handler picks up the pending token, moves it
+// to sessionStorage (tab-scoped, gone when tab closes) and clears the pending key.
+// The token never appears in the URL.
 
 function ImpersonationHandler({ children }) {
-  const [params] = useSearchParams();
-  const navigate = useNavigate();
-
   useEffect(() => {
-    const token = params.get('impersonate');
+    const token = localStorage.getItem('dm_impersonate_pending');
     if (token) {
-      localStorage.setItem('dm_token', token);
-      navigate('/', { replace: true });
+      localStorage.removeItem('dm_impersonate_pending');
+      sessionStorage.setItem('dm_token', token);
       window.location.reload();
     }
   }, []);
@@ -213,22 +215,18 @@ export default function App() {
               </ImpersonationHandler>
             } />
 
-            {/* Admin panel — separate admin auth */}
-            <Route path="/admin/login" element={
-              <AdminAuthProvider>
-                <AdminLogin />
-              </AdminAuthProvider>
-            } />
-            <Route path="/admin" element={
-              <AdminAuthProvider>
-                <AdminRoute><AdminLayout /></AdminRoute>
-              </AdminAuthProvider>
-            }>
-              <Route index element={<AdminDashboard />} />
-              <Route path="users"         element={<AdminUsers />} />
-              <Route path="subscriptions" element={<AdminSubscriptions />} />
-              <Route path="payments"      element={<AdminPayments />} />
-              <Route path="api-keys"      element={<AdminApiKeys />} />
+            {/* Admin panel — single AdminAuthProvider wraps login + protected routes */}
+            <Route element={<AdminAuthProvider><Outlet /></AdminAuthProvider>}>
+              <Route path="/admin/login" element={<AdminLogin />} />
+              <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
+                <Route index element={<AdminDashboard />} />
+                <Route path="users"         element={<AdminUsers />} />
+                <Route path="subscriptions" element={<AdminSubscriptions />} />
+                <Route path="payments"      element={<AdminPayments />} />
+                <Route path="api-keys"      element={<AdminApiKeys />} />
+                <Route path="audit-log"     element={<AdminAuditLog />} />
+                <Route path="account"       element={<AdminAccount />} />
+              </Route>
             </Route>
 
             {/* Catch-all */}

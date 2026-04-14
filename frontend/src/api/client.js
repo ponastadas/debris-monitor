@@ -11,7 +11,8 @@ const client = axios.create({
 
 // Attach auth headers on every request
 client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('dm_token');
+  // Impersonation tokens land in sessionStorage (tab-scoped); normal tokens in localStorage.
+  const token = sessionStorage.getItem('dm_token') || localStorage.getItem('dm_token');
   if (token) {
     // Authenticated user — send bearer token
     config.headers.Authorization = `Bearer ${token}`;
@@ -33,6 +34,7 @@ client.interceptors.response.use(
     const body   = error.response?.data;
 
     if (status === 401) {
+      sessionStorage.removeItem('dm_token');
       localStorage.removeItem('dm_token');
       // Avoid redirect loop on the login page itself
       if (!window.location.pathname.startsWith('/login')) {

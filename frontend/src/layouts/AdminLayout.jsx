@@ -7,6 +7,8 @@ const NAV_ITEMS = [
   { to: '/admin/subscriptions', label: 'Subscriptions', icon: '◈' },
   { to: '/admin/payments',      label: 'Payments',      icon: '◆' },
   { to: '/admin/api-keys',      label: 'API Keys',      icon: '◐' },
+  { to: '/admin/audit-log',     label: 'Audit Log',     icon: '◇' },
+  { to: '/admin/account',       label: 'Account',       icon: '◑' },
 ];
 
 export default function AdminLayout() {

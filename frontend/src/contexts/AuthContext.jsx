@@ -10,9 +10,10 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true); // true until initial session check completes
   const navigate              = useNavigate();
 
-  // Restore session on mount
+  // Restore session on mount. Impersonation tokens are tab-scoped in sessionStorage;
+  // normal tokens live in localStorage. Either is enough to hydrate the session.
   useEffect(() => {
-    const token = localStorage.getItem('dm_token');
+    const token = sessionStorage.getItem('dm_token') || localStorage.getItem('dm_token');
     if (token) {
       client.get('/auth/me')
         .then((res) => setUser(res.data.data))
@@ -55,6 +56,7 @@ export function AuthProvider({ children }) {
     } catch {
       // Swallow — token may already be invalid
     } finally {
+      sessionStorage.removeItem('dm_token');
       localStorage.removeItem('dm_token');
       setUser(null);
       navigate('/login');
