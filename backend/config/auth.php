@@ -44,8 +44,15 @@ return [
             'provider' => 'users',
         ],
 
-        // Separate Sanctum guard for admin accounts — only accepts tokens issued
-        // against the admin_accounts table (tokenable_type = AdminAccount).
+        // Explicit sanctum guard scoped to the users provider.
+        // Sanctum 4.x filters tokens by tokenable_type when a provider is configured,
+        // so AdminAccount tokens are rejected here with 401 (not a 500 crash).
+        'sanctum' => [
+            'driver'   => 'sanctum',
+            'provider' => 'users',
+        ],
+
+        // Separate admin guard — only accepts tokens where tokenable_type = AdminAccount.
         'admin' => [
             'driver'   => 'sanctum',
             'provider' => 'admin_accounts',
