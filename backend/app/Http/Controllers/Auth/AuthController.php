@@ -8,6 +8,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Models\User;
+use App\Services\EntitlementService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -138,12 +139,15 @@ class AuthController extends Controller
 
     private function userResource(User $user): array
     {
+        $entitlements = EntitlementService::forUser($user);
+
         return [
             'id'                => $user->id,
             'name'              => $user->name,
             'email'             => $user->email,
             'status'            => $user->status ?? 'active',
             'subscription_plan' => $user->currentPlan(),
+            'can_view_alerts'   => EntitlementService::can($entitlements, 'can_view_alerts'),
             'created_at'        => $user->created_at?->toIso8601String(),
         ];
     }

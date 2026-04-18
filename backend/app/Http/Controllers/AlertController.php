@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ConjunctionAlert;
+use App\Services\EntitlementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -11,9 +12,21 @@ class AlertController extends Controller
     /**
      * List upcoming conjunction alerts for the authenticated user's
      * watched satellites, ordered by TCA ascending.
+     *
+     * Requires can_view_alerts entitlement (Starter plan or higher).
      */
     public function index(Request $request): JsonResponse
     {
+        $entitlements = EntitlementService::forUser($request->user());
+
+        if (! EntitlementService::can($entitlements, 'can_view_alerts')) {
+            return $this->error(
+                'ALERTS_NOT_AVAILABLE',
+                'Conjunction alerts require a Starter plan or higher.',
+                403,
+            );
+        }
+
         $noradIds = $request->user()
             ->watchedSatellites()
             ->pluck('norad_id');

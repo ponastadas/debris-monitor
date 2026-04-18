@@ -20,39 +20,54 @@ class EntitlementService
     /** Internal plan keys → capability shape */
     private static array $plans = [
         'guest' => [
-            'requests_per_day'   => 10,
-            'can_receive_alerts' => false,
-            'can_use_api_keys'   => false,
-            'webhooks_enabled'   => false,
-            'satellite_limit'    => null,
+            'requests_per_day'              => 10,
+            'can_view_nearby_objects'       => true,   // Tracker analysis — guest-limited by rate limit
+            'can_view_alerts'               => false,  // Alerts tab — subscription required
+            'can_manage_watched_satellites' => false,  // Requires account
+            'can_receive_alerts'            => false,  // Alert notifications — subscription required
+            'can_use_api_keys'              => false,
+            'webhooks_enabled'              => false,
+            'satellite_limit'               => null,
         ],
         'free' => [
-            'requests_per_day'   => 500,
-            'can_receive_alerts' => false,
-            'can_use_api_keys'   => true,
-            'webhooks_enabled'   => false,
-            'satellite_limit'    => 5,
+            'requests_per_day'              => 500,
+            'can_view_nearby_objects'       => true,   // Tracker fully available on free
+            'can_view_alerts'               => false,  // Alerts tab — must upgrade
+            'can_manage_watched_satellites' => true,   // Can watch up to satellite_limit
+            'can_receive_alerts'            => false,  // Notifications — must upgrade
+            'can_use_api_keys'              => true,
+            'webhooks_enabled'              => false,
+            'satellite_limit'               => 5,
         ],
         'starter' => [
-            'requests_per_day'   => 10_000,
-            'can_receive_alerts' => true,
-            'can_use_api_keys'   => true,
-            'webhooks_enabled'   => true,
-            'satellite_limit'    => null,
+            'requests_per_day'              => 10_000,
+            'can_view_nearby_objects'       => true,
+            'can_view_alerts'               => true,
+            'can_manage_watched_satellites' => true,
+            'can_receive_alerts'            => true,
+            'can_use_api_keys'              => true,
+            'webhooks_enabled'              => true,
+            'satellite_limit'               => null,
         ],
         'pro' => [
-            'requests_per_day'   => 100_000,
-            'can_receive_alerts' => true,
-            'can_use_api_keys'   => true,
-            'webhooks_enabled'   => true,
-            'satellite_limit'    => null,
+            'requests_per_day'              => 100_000,
+            'can_view_nearby_objects'       => true,
+            'can_view_alerts'               => true,
+            'can_manage_watched_satellites' => true,
+            'can_receive_alerts'            => true,
+            'can_use_api_keys'              => true,
+            'webhooks_enabled'              => true,
+            'satellite_limit'               => null,
         ],
         'enterprise' => [
-            'requests_per_day'   => null,
-            'can_receive_alerts' => true,
-            'can_use_api_keys'   => true,
-            'webhooks_enabled'   => true,
-            'satellite_limit'    => null,
+            'requests_per_day'              => null,
+            'can_view_nearby_objects'       => true,
+            'can_view_alerts'               => true,
+            'can_manage_watched_satellites' => true,
+            'can_receive_alerts'            => true,
+            'can_use_api_keys'              => true,
+            'webhooks_enabled'              => true,
+            'satellite_limit'               => null,
         ],
     ];
 
@@ -151,15 +166,17 @@ class EntitlementService
             $reqLimit = $caps['requests_per_day'];
 
             $result[] = [
-                'key'              => $key,
-                'label'            => self::$labels[$key],
-                'price_cents'      => $pricing['price_cents'],
-                'price_formatted'  => $pricing['price_formatted'],
-                'requests_per_day' => $reqLimit,
-                'requests_label'   => $reqLimit !== null ? number_format($reqLimit).'/day' : 'Unlimited',
-                'can_receive_alerts' => $caps['can_receive_alerts'],
-                'webhooks_enabled' => $caps['webhooks_enabled'],
-                'satellite_limit'  => $caps['satellite_limit'],
+                'key'                           => $key,
+                'label'                         => self::$labels[$key],
+                'price_cents'                   => $pricing['price_cents'],
+                'price_formatted'               => $pricing['price_formatted'],
+                'requests_per_day'              => $reqLimit,
+                'requests_label'                => $reqLimit !== null ? number_format($reqLimit).'/day' : 'Unlimited',
+                'can_view_alerts'               => $caps['can_view_alerts'],
+                'can_manage_watched_satellites' => $caps['can_manage_watched_satellites'],
+                'can_receive_alerts'            => $caps['can_receive_alerts'],
+                'webhooks_enabled'              => $caps['webhooks_enabled'],
+                'satellite_limit'               => $caps['satellite_limit'],
             ];
         }
 

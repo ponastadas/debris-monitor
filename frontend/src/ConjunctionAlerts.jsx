@@ -135,7 +135,7 @@ function AlertCard({ alert, onTrack }) {
 
 // ── Watch form ────────────────────────────────────────────────────────────────
 
-function WatchForm({ apiToken, onWatched }) {
+function WatchForm({ onWatched }) {
   const [noradId, setNoradId] = useState("");
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState(null);
@@ -150,7 +150,7 @@ function WatchForm({ apiToken, onWatched }) {
       setNoradId("");
       onWatched();
     } catch (err) {
-      setErr(err.message ?? "Network error — is the backend running?");
+      setErr(err.message ?? "Failed to add satellite.");
     } finally {
       setBusy(false);
     }
@@ -197,57 +197,6 @@ function WatchForm({ apiToken, onWatched }) {
   );
 }
 
-// ── Token gate ────────────────────────────────────────────────────────────────
-
-function TokenGate({ onToken }) {
-  const [val, setVal] = useState("");
-
-  return (
-    <div style={{ padding: "40px 20px", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>
-      <div style={{ color: "#00d4ff", fontSize: 11, letterSpacing: 2, marginBottom: 8 }}>SANCTUM TOKEN REQUIRED</div>
-      <div style={{ color: "rgba(200,223,240,0.4)", fontSize: 9, marginBottom: 20 }}>
-        Conjunction alerts require a user account.<br />
-        Paste your Sanctum bearer token below.
-      </div>
-      <input
-        type="password"
-        value={val}
-        onChange={e => setVal(e.target.value)}
-        placeholder="Bearer token…"
-        style={{
-          width: "80%",
-          background: "rgba(0,212,255,0.06)",
-          border: "1px solid rgba(0,212,255,0.25)",
-          borderRadius: 4,
-          color: "#c8dff0",
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: 10,
-          marginBottom: 10,
-          outline: "none",
-          padding: "8px 12px",
-        }}
-      />
-      <br />
-      <button
-        onClick={() => val.trim() && onToken(val.trim())}
-        style={{
-          background: "rgba(0,212,255,0.12)",
-          border: "1px solid rgba(0,212,255,0.4)",
-          borderRadius: 4,
-          color: "#00d4ff",
-          cursor: "pointer",
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: 9,
-          letterSpacing: 1.5,
-          padding: "8px 20px",
-        }}
-      >
-        CONNECT
-      </button>
-    </div>
-  );
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ConjunctionAlerts({ onTrack }) {
@@ -272,12 +221,10 @@ export default function ConjunctionAlerts({ onTrack }) {
         client.get("/alerts"),
         client.get("/watch"),
       ]);
-      setAlerts(alertRes.data.data ?? alertRes.data);
-      setWatched(watchRes.data.data ?? watchRes.data);
+      setAlerts(alertRes.data.data ?? alertRes.data ?? []);
+      setWatched(watchRes.data.data ?? watchRes.data ?? []);
     } catch (err) {
-      if (err.type !== "UNAUTHENTICATED") {
-        setError(err.message ?? "Could not reach the API.");
-      }
+      setError(err.message ?? "Could not reach the API.");
     } finally {
       setLoading(false);
     }
@@ -356,8 +303,17 @@ export default function ConjunctionAlerts({ onTrack }) {
 
           {! loading && alerts.length === 0 && (
             <div style={{ color: "rgba(200,223,240,0.3)", fontSize: 10, textAlign: "center", paddingTop: 40 }}>
-              No upcoming conjunctions detected.<br />
-              <span style={{ fontSize: 9 }}>Run <code style={{ color: "#00d4ff" }}>php artisan conjunctions:check</code> to scan.</span>
+              {watched.length === 0 ? (
+                <>
+                  <div style={{ fontSize: 11, color: "rgba(0,212,255,0.4)", marginBottom: 10 }}>No satellites being monitored</div>
+                  Add a satellite NORAD ID to your watch list to start receiving conjunction alerts.
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 11, color: "#30d158", marginBottom: 10 }}>✓ All clear</div>
+                  No upcoming conjunctions detected for your watched satellites.
+                </>
+              )}
             </div>
           )}
 
@@ -372,11 +328,12 @@ export default function ConjunctionAlerts({ onTrack }) {
             WATCHED SATELLITES
           </div>
 
-          <WatchForm apiToken={apiToken} onWatched={load} />
+          <WatchForm onWatched={load} />
 
           {watched.length === 0 && (
             <div style={{ color: "rgba(200,223,240,0.25)", fontSize: 9, textAlign: "center", paddingTop: 8 }}>
-              No satellites on watch list.
+              No satellites on watch list.<br />
+              <span style={{ color: "rgba(0,212,255,0.3)" }}>Enter a NORAD ID above.</span>
             </div>
           )}
 
