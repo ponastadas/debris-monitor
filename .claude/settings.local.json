@@ -19,7 +19,12 @@
       "Bash(php artisan:*)",
       "Bash(echo \"EXIT:$?\")",
       "Bash(composer require:*)",
-      "Bash(php:*)"
+      "Bash(php:*)",
+      "Bash(npm run:*)",
+      "Bash(npx vitest:*)",
+      "Bash(docker compose *)",
+      "Bash(docker-compose ps *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
