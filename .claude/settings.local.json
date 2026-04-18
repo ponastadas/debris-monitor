@@ -24,7 +24,9 @@
       "Bash(npx vitest:*)",
       "Bash(docker compose *)",
       "Bash(docker-compose ps *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(grep *)",
+      "Bash(git commit *)"
     ]
   }
 }
