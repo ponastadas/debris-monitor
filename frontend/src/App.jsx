@@ -236,12 +236,20 @@ function MainApp() {
 
         {view === 'catalog' && <DebrisMonitor onTrack={handleTrack} />}
         {view === 'tracker' && <SatelliteTracker initialNoradId={trackId} />}
-        {view === 'alerts'  && !loading && (
-          user
-            ? (user.can_view_alerts
-                ? <ConjunctionAlerts onTrack={handleTrack} />
-                : <AlertsUpgradeGate plan={user.subscription_plan} />)
-            : <AlertsAuthGate />
+        {view === 'alerts' && (
+          loading
+            ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#020810' }}>
+                <div style={{ color: 'rgba(0,212,255,0.4)', fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: 2 }}>
+                  LOADING…
+                </div>
+              </div>
+            )
+            : (user
+                ? (user.can_view_alerts
+                    ? <ConjunctionAlerts onTrack={handleTrack} />
+                    : <AlertsUpgradeGate plan={user.subscription_plan} />)
+                : <AlertsAuthGate />)
         )}
       </div>
 

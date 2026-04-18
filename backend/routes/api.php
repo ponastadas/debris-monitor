@@ -16,6 +16,7 @@ use App\Http\Controllers\BillingController;
 use App\Http\Controllers\ConjunctionController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\SatelliteController;
+use App\Http\Controllers\SatelliteSearchController;
 use App\Http\Controllers\WatchedSatelliteController;
 use App\Http\Middleware\HandlePublicRequest;
 use Illuminate\Support\Facades\Route;
@@ -148,6 +149,9 @@ Route::prefix('admin')->middleware(['auth:admin', 'admin'])->group(function () {
 Route::middleware(HandlePublicRequest::class)->group(function () {
 
     Route::prefix('satellites')->group(function () {
+        // Search must be declared before /{noradId} to avoid being captured by the wildcard.
+        Route::get('/search', SatelliteSearchController::class);
+
         Route::get('/{noradId}',       [SatelliteController::class, 'show'])->whereNumber('noradId');
         Route::get('/{noradId}/orbit', [SatelliteController::class, 'orbit'])->whereNumber('noradId');
     });

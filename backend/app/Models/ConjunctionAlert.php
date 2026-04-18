@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use Database\Factories\ConjunctionAlertFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable([
@@ -14,6 +16,8 @@ use Illuminate\Database\Eloquent\Model;
 ])]
 class ConjunctionAlert extends Model
 {
+    /** @use HasFactory<ConjunctionAlertFactory> */
+    use HasFactory;
     /** Alerts whose TCA is within the next $days days. */
     public function scopeUpcoming(Builder $query, int $days = 5): Builder
     {

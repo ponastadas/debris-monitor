@@ -2,13 +2,17 @@
 
 namespace App\Models;
 
+use Database\Factories\WatchedSatelliteFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable(['user_id', 'norad_id', 'name', 'tle_line1', 'tle_line2', 'tle_fetched_at'])]
 class WatchedSatellite extends Model
 {
+    /** @use HasFactory<WatchedSatelliteFactory> */
+    use HasFactory;
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

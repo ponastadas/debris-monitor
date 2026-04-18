@@ -32,7 +32,7 @@ class AlertController extends Controller
             ->pluck('norad_id');
 
         if ($noradIds->isEmpty()) {
-            return response()->json([]);
+            return $this->success([]);
         }
 
         $alerts = ConjunctionAlert::upcoming()
@@ -53,6 +53,6 @@ class AlertController extends Controller
                 'risk_level'         => $a->riskLevel(),
             ]);
 
-        return response()->json($alerts);
+        return $this->success($alerts);
     }
 }

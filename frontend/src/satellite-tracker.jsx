@@ -426,6 +426,83 @@ function getRiskColor(level) {
   return "#30d158";
 }
 
+function createSatelliteTexture(colorHex) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  const cx = 32, cy = 32;
+
+  // Soft glow halo
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 24);
+  glow.addColorStop(0,   colorHex + "bb");
+  glow.addColorStop(0.4, colorHex + "44");
+  glow.addColorStop(1,   colorHex + "00");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, 64, 64);
+
+  // Satellite body
+  ctx.fillStyle = colorHex;
+  ctx.fillRect(cx - 6, cy - 5, 12, 10);
+
+  // Left solar panel
+  ctx.fillRect(cx - 20, cy - 2, 12, 4);
+
+  // Right solar panel
+  ctx.fillRect(cx + 8,  cy - 2, 12, 4);
+
+  // Center highlight dot
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(cx - 2, cy - 2, 4, 4);
+
+  return canvas;
+}
+
+/**
+ * Fetch a TLE-derived satellite.js satrec for a real NORAD ID from CelesTrak.
+ * Returns null if the object is not found, TLE is invalid, or network fails.
+ * Callers must treat null as "data unavailable — use approx fallback."
+ */
+async function fetchSecondaryTle(noradId) {
+  if (!noradId) return null;
+  try {
+    const res = await fetch(
+      `https://celestrak.org/NORAD/elements/gp.php?CATNR=${encodeURIComponent(noradId)}&FORMAT=TLE`
+    );
+    if (!res.ok) return null;
+    const text = await res.text();
+    if (!text || text.includes('No GP data') || text.includes('No results')) return null;
+    const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 3 || !lines[1].startsWith('1 ') || !lines[2].startsWith('2 ')) return null;
+    const satrec = satellite.twoline2satrec(lines[1], lines[2]);
+    return satrec.error !== 0 ? null : satrec;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Approximate screen position for a nearby object when TLE is unavailable.
+ * Places markers in an even ring around the primary satellite's Earth-local position.
+ * NOT a real orbital position — purely a visual placeholder until TLE is fetched.
+ */
+function approxNearbyPosition(satPos, index, count) {
+  const angle  = (index / Math.max(count, 1)) * Math.PI * 2;
+  const spread = 0.09; // ~540 km at ISS altitude — tight cluster, clearly approximate
+  return new THREE.Vector3(
+    satPos.x + spread * Math.cos(angle),
+    satPos.y + spread * Math.sin(angle * 0.4) * 0.25,
+    satPos.z + spread * Math.sin(angle),
+  );
+}
+
+/** Small sphere marker for a nearby/conjunction object. One per object (not a point cloud). */
+function createNearbyMarker(colorHex) {
+  return new THREE.Mesh(
+    new THREE.SphereGeometry(0.014, 8, 8),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(colorHex), transparent: true, opacity: 0.85 }),
+  );
+}
+
 function riskFromScore(score) {
   if (score > 60) return { label: "HIGH RISK", color: "#ff3b30", bg: "rgba(255,59,48,0.08)", border: "rgba(255,59,48,0.25)" };
   if (score > 30) return { label: "MODERATE", color: "#ff9500", bg: "rgba(255,149,0,0.08)", border: "rgba(255,149,0,0.25)" };
@@ -441,15 +518,17 @@ async function fetchConjunctions(noradId) {
 
   return {
     objects: res.data.data.objects.map((obj) => ({
-      id:        obj.object_id,
-      missKm:    obj.miss_km,
-      prob:      obj.probability,
-      riskScore: obj.risk_score,
-      riskLevel: obj.risk_level,
-      tca:       obj.tca,
-      alt:       obj.altitude_km,
+      id:               obj.object_id,
+      secondaryNoradId: obj.secondary_norad_id ?? null,
+      missKm:           obj.miss_km,
+      prob:             obj.probability,
+      riskScore:        obj.risk_score,
+      riskLevel:        obj.risk_level,
+      tca:              obj.tca,
+      alt:              obj.altitude_km,
     })),
     remaining,
+    source: res.data.data.source ?? 'simulated',
   };
 }
 
@@ -493,11 +572,14 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
   const [searching,     setSearching]     = useState(false);
   const [trackedSats,   setTrackedSats]   = useState([]);  // for panel display
   const [error,         setError]         = useState(null);
-  const [debris,            setDebris]            = useState([]);
-  const [overallRisk,       setOverallRisk]       = useState(null);
-  const [guestLimitReached, setGuestLimitReached] = useState(false);
+  const [debris,              setDebris]              = useState([]);
+  const [overallRisk,         setOverallRisk]         = useState(null);
+  const [conjunctionsLoading, setConjunctionsLoading] = useState(false);
+  const [guestLimitReached,   setGuestLimitReached]   = useState(false);
   // null = authenticated user (no quota); 0–9 = guest with N analyses remaining today
-  const [guestRemaining,    setGuestRemaining]    = useState(null);
+  const [guestRemaining,      setGuestRemaining]      = useState(null);
+  // 'simulated' (Phase 1 risk scores) or 'live' (real CDM data, Phase 2)
+  const [conjSource,          setConjSource]          = useState('simulated');
 
   // Inject styles
   useEffect(() => {
@@ -506,6 +588,28 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
     document.head.appendChild(styleEl);
     return () => { document.head.removeChild(styleEl); };
   }, []);
+
+  // Auto-track the satellite specified by initialNoradId (e.g. arriving from an Alerts card).
+  // Runs once on mount. By the time the async CelesTrak fetch resolves Three.js is already
+  // initialised — the Three.js useEffect runs synchronously before any async work completes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!initialNoradId) return;
+    const id = initialNoradId;
+    (async () => {
+      try {
+        const res  = await fetch(
+          `https://celestrak.org/NORAD/elements/gp.php?CATNR=${encodeURIComponent(id)}&FORMAT=TLE`
+        );
+        const text = await res.text();
+        if (!text || text.includes('No GP data') || text.includes('No results')) return;
+        const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length >= 3 && lines[1].startsWith('1 ') && lines[2].startsWith('2 ')) {
+          addSatellite(lines[0], id, lines[1], lines[2]);
+        }
+      } catch { /* CelesTrak unreachable — leave tracker empty */ }
+    })();
+  }, []); // intentional: fire once on mount with the initial prop value
 
   // Init Three.js
   useEffect(() => {
@@ -643,7 +747,7 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
           const lat = satellite.degreesLat(geo.latitude);
           const lon = satellite.degreesLong(geo.longitude);
           const pos = latLonAltToVec3(lat, lon, geo.height);
-          meshes.dot.position.copy(pos);
+          meshes.sprite.position.copy(pos);
           meshes.ring.position.copy(pos);
           meshes.ring.lookAt(new THREE.Vector3(0, 0, 0));
           updates[sat.id] = {
@@ -652,6 +756,20 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
             alt:   geo.height.toFixed(0),
             speed: Math.sqrt(pv.velocity.x**2 + pv.velocity.y**2 + pv.velocity.z**2).toFixed(2),
           };
+
+          // Propagate SGP4 nearby markers every second alongside the primary satellite.
+          // Approx markers (no TLE) are static — their position is not updated here.
+          meshes.nearbyMarkers?.forEach(obj => {
+            if (!obj.satrec || obj.method !== 'sgp4') return;
+            const pv2 = satellite.propagate(obj.satrec, now);
+            if (!pv2.position) return;
+            const geo2 = satellite.eciToGeodetic(pv2.position, gmst);
+            obj.mesh.position.copy(latLonAltToVec3(
+              satellite.degreesLat(geo2.latitude),
+              satellite.degreesLong(geo2.longitude),
+              geo2.height,
+            ));
+          });
         });
         if (Object.keys(updates).length)
           setTrackedSats(prev => prev.map(s => updates[s.id] ? { ...s, ...updates[s.id] } : s));
@@ -738,8 +856,13 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
       const satPos = latLonAltToVec3(lat, lon, alt);
 
       // 3D objects (children of Earth so they drag with the globe)
-      const dot  = new THREE.Mesh(new THREE.SphereGeometry(0.022,16,16), new THREE.MeshBasicMaterial({ color }));
-      dot.position.copy(satPos);
+
+      // Satellite icon — billboard sprite (always faces camera)
+      const spriteTex = new THREE.CanvasTexture(createSatelliteTexture(colorCss));
+      const spriteMat = new THREE.SpriteMaterial({ map: spriteTex, transparent: true, depthTest: false });
+      const sprite    = new THREE.Sprite(spriteMat);
+      sprite.scale.set(0.12, 0.12, 1);
+      sprite.position.copy(satPos);
 
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.03,0.046,32), new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.4, side:THREE.DoubleSide }));
       ring.position.copy(satPos);
@@ -757,27 +880,88 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
         ? new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbitPts), new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.3 }))
         : null;
 
-      earthRef.current?.add(dot, ring);
+      earthRef.current?.add(sprite, ring);
       if (orbit) earthRef.current?.add(orbit);
 
-      satMeshesRef.current[noradId] = { dot, ring, orbit };
+      satMeshesRef.current[noradId] = { sprite, ring, orbit, spriteTex, nearbyMarkers: [] };
       trackedSatsRef.current = [...trackedSatsRef.current, { id: noradId, name, satrec, colorCss }];
       setTrackedSats(prev => [...prev, { id: noradId, name, color: colorCss, lat: lat.toFixed(2), lon: lon.toFixed(2), alt: alt.toFixed(0), speed: spd }]);
 
-      // Fetch conjunction analysis from backend (replaces client-side mock).
+      // Fetch conjunction analysis from backend.
       // HandlePublicRequest applies quota: 10/day for guests, tier limit for API keys, unlimited for users.
       if (trackedSatsRef.current.length === 1) {
+        setConjunctionsLoading(true);
         fetchConjunctions(noradId)
-          .then(({ objects, remaining }) => {
+          .then(async ({ objects, remaining, source }) => {
+            // Show risk panel immediately; 3D markers fill in after per-object TLE fetch.
             setDebris(objects);
-            if (objects.length > 0) setOverallRisk(Math.max(...objects.map((d) => d.riskScore)));
+            setConjSource(source);
+
+            if (objects.length > 0) {
+              setOverallRisk(Math.max(...objects.map((d) => d.riskScore)));
+
+              // Fetch real TLE for each secondary NORAD ID in parallel.
+              // fetchSecondaryTle returns null on any failure — approx fallback used below.
+              const tleResults = await Promise.all(
+                objects.map(obj => fetchSecondaryTle(obj.secondaryNoradId))
+              );
+
+              // Update panel items with resolved propagation method label
+              setDebris(objects.map((obj, i) => ({
+                ...obj,
+                propagationMethod: tleResults[i] ? 'sgp4' : 'approx',
+              })));
+
+              // Build one 3D sphere marker per nearby object
+              const nearbyMarkers = [];
+              const now2  = new Date();
+              const gmst2 = satellite.gstime(now2);
+
+              objects.forEach((obj, i) => {
+                const satrec   = tleResults[i];
+                const marker   = createNearbyMarker(getRiskColor(obj.riskLevel));
+                let   useSgp4  = false;
+
+                if (satrec) {
+                  // Real SGP4 position from TLE
+                  const pv2 = satellite.propagate(satrec, now2);
+                  if (pv2.position) {
+                    const geo2 = satellite.eciToGeodetic(pv2.position, gmst2);
+                    marker.position.copy(latLonAltToVec3(
+                      satellite.degreesLat(geo2.latitude),
+                      satellite.degreesLong(geo2.longitude),
+                      geo2.height,
+                    ));
+                    useSgp4 = true;
+                  }
+                }
+
+                if (!useSgp4) {
+                  // Approximate: evenly-spaced ring around primary satellite.
+                  // NOT a real orbital position — clearly approximate (TLE unavailable).
+                  marker.position.copy(approxNearbyPosition(satPos, i, objects.length));
+                }
+
+                earthRef.current?.add(marker);
+                nearbyMarkers.push({
+                  mesh:   marker,
+                  satrec: useSgp4 ? satrec : null,
+                  method: useSgp4 ? 'sgp4' : 'approx',
+                });
+              });
+
+              if (satMeshesRef.current[noradId]) {
+                satMeshesRef.current[noradId].nearbyMarkers = nearbyMarkers;
+              }
+            }
             if (remaining !== null) setGuestRemaining(remaining);
           })
           .catch((err) => {
             if (err.type === 'GUEST_LIMIT_REACHED') {
               setGuestLimitReached(true);
             }
-          });
+          })
+          .finally(() => setConjunctionsLoading(false));
       }
     } catch (err) { setError(err.message); }
   };
@@ -786,16 +970,31 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
   const removeSatellite = (noradId) => {
     const meshes = satMeshesRef.current[noradId];
     if (meshes) {
-      [meshes.dot, meshes.ring, meshes.orbit].filter(Boolean).forEach(m => {
+      // Sprite — dispose texture + material
+      if (meshes.sprite) {
+        earthRef.current?.remove(meshes.sprite);
+        meshes.spriteTex?.dispose();
+        meshes.sprite.material?.dispose();
+      }
+      // Ring + orbit — dispose geometry + material
+      [meshes.ring, meshes.orbit].filter(Boolean).forEach(m => {
         earthRef.current?.remove(m);
         m.geometry?.dispose();
         m.material?.dispose();
       });
+      // Nearby object markers (SGP4-propagated or approximate)
+      if (meshes.nearbyMarkers?.length) {
+        meshes.nearbyMarkers.forEach(obj => {
+          earthRef.current?.remove(obj.mesh);
+          obj.mesh.geometry?.dispose();
+          obj.mesh.material?.dispose();
+        });
+      }
       delete satMeshesRef.current[noradId];
     }
     trackedSatsRef.current = trackedSatsRef.current.filter(s => s.id !== noradId);
     setTrackedSats(prev => prev.filter(s => s.id !== noradId));
-    if (trackedSatsRef.current.length === 0) { setDebris([]); setOverallRisk(null); }
+    if (trackedSatsRef.current.length === 0) { setDebris([]); setOverallRisk(null); setConjunctionsLoading(false); }
   };
 
   const risk = overallRisk != null ? riskFromScore(overallRisk) : null;
@@ -916,26 +1115,63 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
             </div>
           )}
 
-          {/* Debris List */}
-          {debris.length > 0 && (
+          {/* Conjunction / nearby objects section */}
+          {trackedSats.length > 0 && (
             <div className="section">
-              <div className="section-label">Tracked Objects</div>
-              <div className="mock-badge">CONJUNCTION ANALYSIS · PHASE 1</div>
-              {debris.map((d) => (
-                <div key={d.id} className="debris-item">
-                  <div className="debris-risk-dot" style={{ background: getRiskColor(d.riskLevel) }} />
-                  <div style={{ flex: 1 }}>
-                    <div className="debris-id">{d.id}</div>
-                    <div className="debris-stats">
-                      MISS: {d.missKm} km · P(c): {d.prob}<br />
-                      ALT: {d.alt} km
-                    </div>
-                  </div>
-                  <div className="debris-tca">
-                    TCA<br />{d.tca}
+              <div className="section-label">Nearby Risky Objects</div>
+
+              {conjunctionsLoading && (
+                <div className="loading-row">
+                  <div className="spinner" />
+                  ANALYSING CONJUNCTION WINDOW…
+                </div>
+              )}
+
+              {!conjunctionsLoading && debris.length === 0 && (
+                <div style={{ padding: "12px 0", textAlign: "center" }}>
+                  <div style={{ color: "#30d158", fontSize: 11, letterSpacing: 1, marginBottom: 4 }}>✓ NO THREATS DETECTED</div>
+                  <div style={{ color: "rgba(0,212,255,0.3)", fontSize: 9, letterSpacing: 1, lineHeight: 1.7 }}>
+                    No conjunction events in<br />the 5-day analysis window.
                   </div>
                 </div>
-              ))}
+              )}
+
+              {!conjunctionsLoading && debris.length > 0 && (
+                <>
+                  {conjSource === 'simulated' ? (
+                    <div className="mock-badge">SIMULATED RISK · REAL NORAD IDs</div>
+                  ) : (
+                    <div className="live-badge">LIVE CDM DATA</div>
+                  )}
+                  {debris.map((d) => (
+                    <div key={d.id} className="debris-item">
+                      <div className="debris-risk-dot" style={{ background: getRiskColor(d.riskLevel) }} />
+                      <div style={{ flex: 1 }}>
+                        <div className="debris-id" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          {d.secondaryNoradId ? `NORAD ${d.secondaryNoradId}` : d.id}
+                          {d.propagationMethod && (
+                            <span style={{
+                              fontSize: 7, letterSpacing: 0.5, borderRadius: 2, padding: "1px 5px",
+                              color:   d.propagationMethod === 'sgp4' ? '#30d158' : 'rgba(255,149,0,0.8)',
+                              border: `1px solid ${d.propagationMethod === 'sgp4' ? 'rgba(48,209,88,0.35)' : 'rgba(255,149,0,0.35)'}`,
+                            }}>
+                              {d.propagationMethod === 'sgp4' ? 'SGP4' : '~APPROX'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="debris-stats">
+                          <span style={{ color: "rgba(0,212,255,0.5)" }}>MISS DIST</span> {d.missKm} km
+                          {" · "}
+                          <span style={{ color: "rgba(0,212,255,0.5)" }}>COL. PROB</span> {d.prob != null ? (parseFloat(d.prob) * 100).toExponential(1) + "%" : "N/A"}
+                        </div>
+                      </div>
+                      <div className="debris-tca">
+                        TCA<br />{d.tca}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
 

@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             AdminAccountSeeder::class,
             PageSeeder::class,
+            AlertDemoSeeder::class,
         ]);
     }
 }

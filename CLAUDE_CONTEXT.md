@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Last updated: 2026-04-18 (session 15 — entitlement-gated Alerts tab, Tracker stays free). Use this to onboard Claude Code in new sessions.
+> Last updated: 2026-04-18 (session 20 — Alerts watch-list UX: local catalog, keyboard nav, clear button, search picker). Use this to onboard Claude Code in new sessions.
 
 ---
 
@@ -528,8 +528,26 @@ Features: category toggles, time simulation (1×/10×/1min/s/10min/s), FPS count
 Single satellite: enter NORAD ID → live position + 90-min orbital path + nearby debris risk.
 Data flow: TLE from CelesTrak → SGP4 via satellite.js → client-side propagation.
 
+3D representation:
+- Tracked satellite: `THREE.Sprite` with canvas-drawn billboard (solar panel silhouette + glow, per-satellite color). `createSatelliteTexture(colorHex)` draws on a 64×64 canvas, returns a `THREE.CanvasTexture`. Sprite always faces camera (billboard behavior built into SpriteMaterial). Scale 0.12 scene units.
+- Ring halo: `THREE.RingGeometry` at same position, `lookAt(0,0,0)` for orbital plane orientation.
+- Orbit path: 90-min arc from `THREE.Line`.
+- Debris cloud: after conjunction fetch, `THREE.Points` scattered around the satellite's Earth-local position. Each conjunction object becomes 3–5 color-coded points (red=HIGH, orange=MEDIUM, green=LOW). Visual radius log-scaled from miss distance (capped at 0.18). Points added to `earthRef` so they rotate with the globe. Static once created (miss distances don't change rapidly).
+
+Panel sections:
+- "Nearby Risky Objects" section (replaces "Tracked Objects") shows loading spinner while fetch is in progress, "NO THREATS DETECTED" empty state when fetch completes with 0 results, or live conjunction list with MISS DIST / COL. PROB / TCA labels.
+- `conjunctionsLoading` state prevents premature empty state flash.
+
 ### ConjunctionAlerts.jsx
 User's upcoming conjunction alerts for their watched satellites.
+
+Watch-list UX:
+- `SatelliteSearchPicker` — two-tier search: instant filter against `LOCAL_CATALOG` (20 well-known satellites, no network), then 350ms debounce → `GET /api/satellites/search?q=` (CelesTrak proxy). Remote results merged with local; remote failure is silent when local matches exist.
+- Keyboard navigation: ↑↓ moves active index, Enter selects, Escape closes; active item scrolls into view via itemRefs.
+- Clear button (×) inside input, only shown when query non-empty; spinner shown right of clear during remote fetch.
+- Quick-pick buttons: ISS, Hubble, GOES-16, Tiangong-1, Tianhe — disabled (green "✓ label") when already watched; CSS transitions, no JS hover state.
+- `WatchedSatRow`: hover highlight + two-step delete confirm (✕ → REMOVE/CANCEL). `tle_fresh` display removed — `tle_fetched_at` is never written by `store()` so it was always stale/misleading.
+- Empty states: "NO SATELLITES MONITORED" with radar icon, "ALL CLEAR" with green checkmark, loading shimmer (3 placeholder cards).
 
 ---
 
@@ -691,6 +709,10 @@ TLE groups:
 
 - **satellite.js WASM build error**: top-level await incompatible with iife format — pre-existing issue, not introduced by recent work. Frontend build via CI may need `vite.config.js` adjustments.
 
+- **GuestAccessTest network flakiness**: `it does not count the 10th request` fails when CelesTrak is unreachable or slow during test run (the guest-boundary test increments usage via a real `/api/conjunctions/25544` call). Pre-existing; not related to any feature work.
+
+- **Sanctum `withToken()` cross-user isolation in tests**: When two users are created and both authenticated via `withToken()` within the same test, subsequent requests can occasionally resolve to the wrong user. Use `actingAs($user)` instead of `withToken($token)` for tests that verify per-user data isolation.
+
 - **`php artisan serve` ignores Docker Compose `environment:` for HTTP requests**: PHP's built-in web server does NOT populate `$_ENV` or `getenv()` from the OS process environment in HTTP request handlers. phpdotenv loads `.env` as the sole source. Docker Compose `environment:` vars ARE visible in `docker compose exec` (Tinker/artisan) but NOT in HTTP requests. Always set DB/APP vars in `.env` directly — never rely on Docker env overriding `.env` for the HTTP server. Root cause of a hard login bug: Tinker showed MySQL/user-found, HTTP showed SQLite/user-missing.
 
 ---
@@ -790,6 +812,21 @@ TLE groups:
 - [x] backend/.env.testing created — required by CI workflow (cp .env.testing .env then php artisan key:generate); MySQL settings match the CI service container
 - [x] MFA recovery codes: Download PDF button added to both recovery-code screens (AdminLogin forced-setup + AdminAccount in-session setup); jsPDF (frontend-only, no server call); PDF contains app name, label, date, codes, warnings; plaintext codes never leave the browser
 - [x] Admin user creation: POST /admin/users endpoint; StoreUserRequest (name/email/password/status); USER_CREATED audit event with safe metadata; creates customer User only; CreateUserModal in AdminUsers.jsx with field-level validation error display
+- [x] Tracker 3D visualization: satellite icon replaced from SphereGeometry dot → canvas-texture THREE.Sprite (solar panel silhouette, color-coded per satellite, glow halo); nearby objects now individual THREE.Mesh sphere markers per object (replacing THREE.Points cloud); SGP4-propagated objects update position every second; approx fallback (static ring) when TLE unavailable
+- [x] Tracker panel: "Tracked Objects" → "NEARBY RISKY OBJECTS" section; conjunctionsLoading state + spinner; no-threats empty state ("NO THREATS DETECTED") when fetch completes with 0 results; conjunction stat labels improved to MISS DIST / COL. PROB / TCA; "SIMULATED RISK · REAL NORAD IDs" badge; per-item SGP4/~APPROX badge
+- [x] ConjunctionController: secondary_norad_id field added — real NORAD IDs from Fengyun-1C/Cosmos 2251/Iridium 33 debris pools; risk scores remain simulated (Phase 1); source='simulated' field documents this
+- [x] fetchSecondaryTle() — fetches CelesTrak TLE per secondary NORAD ID; approxNearbyPosition() — static ring fallback; createNearbyMarker() — per-object sphere marker
+- [x] Track Satellite button fix: SatelliteTracker now auto-loads initialNoradId on mount via CelesTrak fetch + addSatellite(); previously just pre-filled the text input without tracking
+- [x] Alerts loading guard: App.jsx shows "LOADING…" placeholder while AuthContext resolves (view='alerts' + loading=true), prevents blank area flicker between auth check and gate render
+- [x] Notifications table migration (2026_04_18_000000) — required for database notification channel in ConjunctionAlertNotification
+- [x] HasFactory added to ConjunctionAlert and WatchedSatellite models
+- [x] WatchedSatelliteFactory — states: iss(), hubble(), forNorad(id, name), withFreshTle()
+- [x] ConjunctionAlertFactory — states: high(), medium(), low(), past(), distant(), notified(), forPrimary(id, name)
+- [x] AlertDemoSeeder — creates 3 demo users covering all Alerts UI states (demo@debris.monitor starter+alerts, free@debris.monitor upgrade gate, empty@debris.monitor no-sats empty state); idempotent (recreates expired alerts only); run with `make artisan cmd="db:seed --class=AlertDemoSeeder"`
+- [x] DatabaseSeeder includes AlertDemoSeeder
+- [x] AlertController — standardized response envelope ($this->success() for all cases including empty watched sats)
+- [x] AlertTest.php — 19 tests: auth guards (401/403/200), empty states (no sats, sats with no alerts), retrieval (fields, risk_level derivation, TCA sort), scoping (unmonitored sats, past TCA, distant TCA, cross-user isolation, multi-sat), factory state tests
+- [x] ConjunctionAlerts search picker: LOCAL_CATALOG (20 satellites, instant), deferred CelesTrak remote search (350ms debounce, merge), keyboard nav (↑↓/Enter/Esc), clear button, spinner, two-step unwatch confirm, tle_fresh display removed
 
 ---
 
