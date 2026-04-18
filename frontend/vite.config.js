@@ -7,6 +7,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',
+    // WSL2 cannot reliably fork processes across /mnt/c; threads pool avoids the timeout
+    pool: 'threads',
   },
   server: {
     host: '0.0.0.0',

@@ -1,98 +1,102 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 
-// ── Minimal stubs so globe/tracker modules don't blow up in jsdom ─────────────
+// ── Stub globe/tracker modules that break in jsdom ────────────────────────────
 
-vi.mock('../DebrisMonitor', () => ({ default: () => <div data-testid="debris-monitor" /> }));
+vi.mock('../DebrisMonitor',     () => ({ default: () => <div data-testid="debris-monitor" /> }));
 vi.mock('../satellite-tracker', () => ({ default: () => <div data-testid="satellite-tracker" /> }));
 vi.mock('../ConjunctionAlerts', () => ({ default: () => <div data-testid="conjunction-alerts" /> }));
+vi.mock('react-ga4',            () => ({ default: { initialize: vi.fn(), send: vi.fn() } }));
+
+// Stub context providers that either do network calls or need a full DOM
 vi.mock('../contexts/ToastContext', () => ({
   ToastProvider: ({ children }) => children,
+  useToast: () => ({ success: vi.fn(), error: vi.fn() }),
 }));
-vi.mock('react-ga4', () => ({ default: { initialize: vi.fn(), send: vi.fn() } }));
+vi.mock('../contexts/CookieConsentContext', () => ({
+  CookieConsentProvider: ({ children }) => children,
+  useCookieConsent: () => ({
+    consent: null, showBanner: false, showSettings: false,
+    acceptAll: vi.fn(), rejectNonEssential: vi.fn(), saveCustom: vi.fn(),
+    openSettings: vi.fn(), closeSettings: vi.fn(),
+  }),
+}));
 
-// ── AuthContext stubs ─────────────────────────────────────────────────────────
+// Stub visual-only components added after original test was written
+vi.mock('../components/CookieBanner', () => ({ default: () => null }));
+vi.mock('../components/Footer',       () => ({ default: () => null }));
+
+// ── AuthContext stub — variable so individual tests can override ──────────────
 
 let mockUser = null;
 
 vi.mock('../contexts/AuthContext', () => ({
   AuthProvider: ({ children }) => children,
-  useAuth: () => ({ user: mockUser, loading: false }),
+  useAuth: () => ({ user: mockUser, loading: false, logout: vi.fn() }),
 }));
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Import App once (threads pool — no resetModules) ─────────────────────────
 
-// Import after mocks are set up
-async function renderApp() {
-  const { default: App } = await import('../App');
-  return render(<App />);
-}
+import App from '../App';
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('Guest access — route visibility', () => {
   beforeEach(() => {
     mockUser = null;
-    vi.resetModules();
-    // Suppress React Router future-flag warnings in tests
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
-  it('renders the globe app at / without redirecting to login (guest)', async () => {
-    const { default: App } = await import('../App');
+  it('renders the globe app at / without redirecting to login (guest)', () => {
     render(<App />);
-    // DebrisMonitor is the default tab — should be visible without auth
+    // DebrisMonitor is the default tab — visible without auth
     expect(screen.getByTestId('debris-monitor')).toBeInTheDocument();
   });
 
-  it('does not render a login page at / for guests', async () => {
-    const { default: App } = await import('../App');
+  it('does not render a login form at / for guests', () => {
     render(<App />);
-    // Should NOT navigate to /login
-    expect(screen.queryByText(/sign in/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /log in/i })).not.toBeInTheDocument();
+    // The nav has SIGN IN / REGISTER links, but no login form should exist
+    expect(screen.queryByRole('form')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
+  });
+
+  it('shows REGISTER and SIGN IN nav links to guest users', () => {
+    render(<App />);
+    expect(screen.getByRole('link', { name: /register/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it('shows DASHBOARD and SIGN OUT links to authenticated users', () => {
+    mockUser = { id: 1, name: 'Alice', email: 'alice@example.com' };
+    render(<App />);
+    expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
   });
 });
 
 describe('AlertsAuthGate', () => {
   beforeEach(() => {
-    vi.resetModules();
+    mockUser = null;
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
-  it('shows the auth gate for guests clicking ALERTS', async () => {
-    mockUser = null;
-
-    // Render with initial view forced to alerts by providing it as the active view.
-    // We test the AlertsAuthGate component in isolation to avoid full App complexity.
-    const { AlertsAuthGate } = await import('../App').catch(() => null) ?? {};
-
-    // Direct component test: render the gate and verify its content
-    const { default: App } = await import('../App');
-    const { container } = render(
-      <MemoryRouter initialEntries={['/']}>
-        <Routes>
-          <Route path="/" element={<App />} />
-        </Routes>
-      </MemoryRouter>
-    );
-
-    // Gate is not rendered until ALERTS tab is clicked, so we verify catalog is shown
+  it('shows catalog by default (no auth required)', () => {
+    render(<App />);
     expect(screen.getByTestId('debris-monitor')).toBeInTheDocument();
   });
 
   it('auth gate renders register and sign-in links', () => {
-    // Directly test the AlertsAuthGate component behaviour (it's not exported, test the inline UI)
+    // Test the gate UI in isolation without a real App render
     render(
-      <div>
+      <MemoryRouter>
         <div data-testid="alerts-gate">
           <div>CONJUNCTION ALERTS</div>
           <div>Alerts notify you when tracked satellites have upcoming conjunctions.</div>
           <a href="/register">CREATE FREE ACCOUNT</a>
           <a href="/login">SIGN IN</a>
         </div>
-      </div>
+      </MemoryRouter>
     );
 
     expect(screen.getByText('CONJUNCTION ALERTS')).toBeInTheDocument();
@@ -104,14 +108,14 @@ describe('AlertsAuthGate', () => {
 describe('Guest limit banner', () => {
   it('renders upgrade CTA when guest limit is reached', () => {
     render(
-      <div>
+      <MemoryRouter>
         <div data-testid="guest-limit-banner">
           <div>FREE LIMIT REACHED</div>
           <div>You've used your 10 free analyses today.</div>
           <a href="/register">CREATE FREE ACCOUNT</a>
           <a href="/login">SIGN IN</a>
         </div>
-      </div>
+      </MemoryRouter>
     );
 
     expect(screen.getByText('FREE LIMIT REACHED')).toBeInTheDocument();
