@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
+import { downloadRecoveryCodesPdf } from '../../utils/downloadRecoveryPdf';
 
 const inputStyle = {
   width: '100%',
@@ -240,7 +241,7 @@ export default function AdminLogin() {
             {qrCode && (
               <div style={{ textAlign: 'center', marginBottom: 16 }}>
                 <img
-                  src={`data:image/svg+xml;base64,${btoa(qrCode)}`}
+                  src={`data:image/svg+xml;base64,${qrCode}`}
                   alt="MFA QR code"
                   style={{ width: 180, height: 180, border: '1px solid rgba(0,212,255,0.2)', borderRadius: 4, background: '#fff', padding: 4 }}
                 />
@@ -312,6 +313,26 @@ export default function AdminLogin() {
                 </span>
               ))}
             </div>
+
+            <button
+              type="button"
+              onClick={() => downloadRecoveryCodesPdf(recoveryCodes)}
+              style={{
+                width: '100%',
+                background: 'rgba(210,153,34,0.1)',
+                border: '1px solid rgba(210,153,34,0.4)',
+                borderRadius: 4,
+                color: '#d29922',
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 11,
+                letterSpacing: '0.1em',
+                padding: '10px',
+                cursor: 'pointer',
+                marginBottom: 8,
+              }}
+            >
+              ↓ Download as PDF
+            </button>
 
             <button
               type="button"

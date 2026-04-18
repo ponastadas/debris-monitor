@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import adminClient from '../../api/adminClient';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
+import { downloadRecoveryCodesPdf } from '../../utils/downloadRecoveryPdf';
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -163,6 +164,9 @@ function MfaSetup({ onComplete, onCancel }) {
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={copyRecoveryCodes} style={btn('ghost')}>
             {copied ? '✓ Copied' : 'Copy codes'}
+          </button>
+          <button onClick={() => downloadRecoveryCodesPdf(recoveryCodes)} style={btn('ghost')}>
+            ↓ Download PDF
           </button>
           <button onClick={onComplete} style={btn('primary')}>Done</button>
         </div>
