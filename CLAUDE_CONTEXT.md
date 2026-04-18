@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Last updated: 2026-04-14 (session 10 — security hardening Phase 1). Use this to onboard Claude Code in new sessions.
+> Last updated: 2026-04-18 (session 15 — entitlement-gated Alerts tab, Tracker stays free). Use this to onboard Claude Code in new sessions.
 
 ---
 
@@ -214,6 +214,12 @@ DELETE /api/watch/{id}
 GET    /api/alerts
 ```
 
+### Public CMS pages (no auth, no rate limit)
+```
+GET /api/pages           → list published pages (title, slug, excerpt)
+GET /api/pages/{slug}    → single published page (404 if draft)
+```
+
 ### Admin auth (public — throttle: 3/min per IP)
 ```
 POST   /api/admin/auth/login
@@ -245,6 +251,14 @@ GET    /api/admin/payments
 POST   /api/admin/payments/{id}/refund
 GET    /api/admin/api-keys
 GET    /api/admin/audit-log   ?action=&admin_id=&from=&to=&page=
+
+GET    /api/admin/pages
+POST   /api/admin/pages
+GET    /api/admin/pages/{page}
+PATCH  /api/admin/pages/{page}
+DELETE /api/admin/pages/{page}
+POST   /api/admin/pages/{page}/publish
+POST   /api/admin/pages/{page}/unpublish
 ```
 
 ### Satellite/conjunction — HandlePublicRequest (guest · Sanctum user · API key)
@@ -343,6 +357,28 @@ Defined via Controller helpers + exception renderer overrides in `bootstrap/app.
   - `AdminLogin.jsx`: 4-step form — credentials → MFA verify (or recovery code) → forced setup (QR + TOTP scan) → recovery codes display
   - `AdminAccount.jsx`: MFA setup/disable page at /admin/account (for already-authenticated admins)
 
+### Cookie Consent
+- `CookieConsentContext.jsx` wraps entire app (inside BrowserRouter)
+- Consent stored in `localStorage('dm_cookie_consent')` as JSON: `{ v: 1, necessary: true, analytics: bool, marketing: bool, ts: ISO }`
+- Version field (`v`) allows re-requesting consent on schema changes — increment `CONSENT_VERSION` constant
+- `CookieBanner.jsx` shows on first visit; three actions: Accept All / Reject Non-Essential / Customize
+- Customize opens `SettingsModal` with per-category checkboxes (necessary locked, analytics + marketing togglable)
+- GA4 only initialized when `consent.analytics === true` (lazy import in CookieConsentContext); `main.jsx` no longer initializes GA4 at startup
+- `RouteTracker` in App.jsx reads consent from localStorage before sending pageview events
+- Footer has "Cookie Settings" link that re-opens the settings modal via `openSettings()` from context
+- Marketing category is scaffolded (always off by default, no cookies currently use it)
+
+### Page CMS
+- `pages` table: title, slug (unique), excerpt, content (longText/Markdown), status (draft/published), meta_title, meta_description, published_at
+- Slugs: auto-generated from title via `Str::slug()`; uniqueness enforced with `-2`, `-3` suffix counter
+- `AdminPageController`: full CRUD + publish/unpublish; all actions audit logged
+- Public `PageController`: only returns published pages; drafts return 404
+- Content: stored as Markdown, rendered on frontend with `marked` + `DOMPurify` (sanitized HTML)
+- `StorePageRequest` + `UpdatePageRequest`: slug validated with `[a-z0-9-]+` regex; unique constraint aware of current record on update
+- `PageSeeder`: creates 5 placeholder pages (privacy-policy, cookie-policy, terms, about, contact) with real placeholder content
+- Frontend: `Page.jsx` renders public pages with custom CSS prose styles; `AdminPages.jsx` list; `AdminPageEdit.jsx` form with slug auto-generation
+- SEO fields (meta_title, meta_description) hidden under a `<details>` toggle in edit form
+
 ### Guest Sessions
 - UUID stored in `localStorage` (key: `dm_guest_id`), sent as `X-Guest-ID` header
 - Tracked via `guest_usage` table; 10 analyses/day limit
@@ -380,6 +416,13 @@ Defined via Controller helpers + exception renderer overrides in `bootstrap/app.
 /admin/api-keys       → AdminApiKeys
 /admin/audit-log      → AdminAuditLog
 /admin/account        → AdminAccount (MFA setup/disable + sign out)
+/admin/users/:id      → AdminUserDetail (full profile + API keys + edit + impersonate)
+/admin/pages          → AdminPages (list with publish/unpublish/delete)
+/admin/pages/new      → AdminPageEdit (create)
+/admin/pages/:id/edit → AdminPageEdit (edit)
+
+(public — no auth:)
+/pages/:slug          → Page (public CMS page renderer — Markdown with DOMPurify sanitization)
 ```
 
 ---
@@ -391,7 +434,7 @@ VITE_GA_MEASUREMENT_ID=G-...          # Google Analytics 4 (blank until ready)
 BACKEND_URL=http://backend:8000       # Docker-only, for Vite proxy (not exposed to browser)
 ```
 
-- GA4 initialized in `main.jsx` via `react-ga4`
+- GA4 initialized lazily in `CookieConsentContext` via dynamic `import('react-ga4')` only when `consent.analytics === true`; `main.jsx` does NOT initialize GA4
 - Vite proxy: `/api` → `process.env.BACKEND_URL ?? 'http://localhost:8000'`
 
 ---
@@ -408,6 +451,7 @@ BACKEND_URL=http://backend:8000       # Docker-only, for Vite proxy (not exposed
 | `GuestUsage` | no relationships; `todayCount(identifier)`, `record(identifier)` static helpers. **Table**: `guest_usage` (explicit) |
 | `Subscription` | belongsTo User; `isActive()`. Cashier-compat columns: name, stripe_id, stripe_price |
 | `Payment` | belongsTo User; `formattedAmount()` |
+| `Page` | no relationships; `scopePublished()`. **Table**: `pages` |
 | `ConjunctionAlert` | scopes: `upcoming()`, `unnotified()`; methods: `riskLevel()`, `hoursUntilTca()` |
 | `WatchedSatellite` | belongsTo User; stores NORAD ID + cached TLE |
 | `Subscription` | belongsTo User; plan + billing dates |
@@ -429,6 +473,7 @@ BACKEND_URL=http://backend:8000       # Docker-only, for Vite proxy (not exposed
 | `conjunction_alerts` | id, primary_norad_id, primary_name, secondary_norad_id, secondary_name, tca, miss_distance_km, probability, risk_score, notified_at |
 | `subscriptions` | id, user_id, name (default 'default'), stripe_id (nullable), stripe_price (nullable), plan, status, current_period_start, current_period_end, canceled_at |
 | `payments` | id, user_id, amount (cents), currency, status, description, stripe_charge_id (nullable), refunded_at |
+| `pages` | id, title, slug (unique), excerpt, content (longText), status (draft/published), meta_title, meta_description, published_at, timestamps |
 | `personal_access_tokens` | (Sanctum) |
 
 ---
@@ -439,13 +484,17 @@ BACKEND_URL=http://backend:8000       # Docker-only, for Vite proxy (not exposed
 
 All actor types (guest / registered user / API key) resolve through `EntitlementService` to the same capability shape. No scattered `if plan === 'starter'` checks.
 
-| Plan | requests/day | Alerts | API keys | Webhooks | Sat limit |
-|---|---|---|---|---|---|
-| guest | 10 | ✗ | ✗ | ✗ | — |
-| free | 500 | ✗ | ✓ | ✗ | 5 |
-| starter | 10,000 | ✓ | ✓ | ✓ | — |
-| pro | 100,000 | ✓ | ✓ | ✓ | — |
-| enterprise | unlimited | ✓ | ✓ | ✓ | — |
+| Plan | req/day | can_view_nearby_objects | can_view_alerts | can_manage_watched_sats | can_receive_alerts | API keys | Webhooks | Sat limit |
+|---|---|---|---|---|---|---|---|---|
+| guest | 10 | ✓ (rate-limited) | ✗ | ✗ | ✗ | ✗ | ✗ | — |
+| free | 500 | ✓ | ✗ | ✓ | ✗ | ✓ | ✗ | 5 |
+| starter | 10k | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| pro | 100k | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| enterprise | ∞ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+
+**Gating:** `can_view_alerts` gates both the frontend Alerts tab and `GET /api/alerts` (403 ALERTS_NOT_AVAILABLE if not entitled). Tracker (nearby-object analysis) is available to all including guests. `can_view_alerts` is included in `/api/auth/me` response so frontend gates without an extra API call.
+
+**Frontend Alerts tab behavior:** guest → AlertsAuthGate (sign in / register), free user → AlertsUpgradeGate (upgrade CTA), paid → ConjunctionAlerts component. Auth loading state suppresses the gate to avoid flicker.
 
 Methods: `forGuest()`, `forUser(User)`, `forApiKey(ApiKey)`, `can(array, string)`, `label(string)`, `catalog()`, `paidPlanKeys()`, `priceCents(string)`
 
@@ -492,7 +541,10 @@ User's upcoming conjunction alerts for their watched satellites.
 - Login: `/admin/login` → `POST /api/admin/auth/login` → stores `dm_admin_token`
 - Pages: dashboard stats, user management (suspend/activate only — role editing removed), subscription list, payment list + refund, API key overview, audit log viewer, account (MFA management)
 - All admin pages use `adminClient.js` (not `client.js`) to send `dm_admin_token`
-- Audit log written for: login.success, login.failed, login.failed_inactive, logout, impersonation.started, user.updated, user.suspended, user.activated, payment.refunded, mfa.enabled, mfa.disabled, mfa.challenge_passed, mfa.challenge_failed, mfa.recovery_used
+- Audit log written for: login.success, login.failed, login.failed_inactive, logout, impersonation.started, user.created, user.updated, user.suspended, user.activated, payment.refunded, mfa.enabled, mfa.disabled, mfa.challenge_passed, mfa.challenge_failed, mfa.recovery_used, page.created, page.updated, page.published, page.unpublished, page.deleted
+- User management: edit modal now includes `name` field (status was already there); VIEW button links to `/admin/users/:id` detail page
+- Protected fields: `email` and `password` are never editable by admin (explained in UI); `addons` JSON not exposed (follow-up item)
+- User creation: POST /admin/users (admin-only) — creates a customer account (not admin); validates name/email/password/status; logs user.created audit event; email uniqueness enforced; password hashed via User model cast; plaintext password never logged
 
 ---
 
@@ -552,8 +604,13 @@ register, login (returns bearer token), logout, me (get/update), password change
 - `cancelSubscription()` — mock cancel, downgrades API keys to free
 - `paymentHistory()` — last 20 payments for the user (GET /api/billing/history)
 
-### Admin controllers (5)
+### Admin controllers (6)
 - Dashboard stats, user CRUD + suspend/impersonate, subscription list, payment list + refund, API key overview
+- `AdminPageController`: index, show, store, update, destroy, publish, unpublish — full CMS CRUD with audit logging
+
+### PageController (public)
+- `index()` — list published pages (title, slug, excerpt)
+- `show(slug)` — single published page by slug; 404 if draft
 
 ---
 
@@ -722,6 +779,17 @@ TLE groups:
 - [x] AdminAuthContext.jsx — login() handles mfa_required; verifyMfa(mfaToken, code) as new exported function
 - [x] AdminAccount.jsx — account page: profile info, MFA status badge, setup flow (QR → confirm → show recovery codes once), disable flow (password), sign out
 - [x] AdminLayout.jsx — added Account nav item (◑); App.jsx — added /admin/account route
+- [x] PageCmsTest.php — 39 tests: public visibility (published vs draft, content exposure, sort order), public show (by slug, 404 for draft, no auth needed), admin CRUD (create/update/delete with field validation, slug auto-gen + collision counter, status default), publish/unpublish + lifecycle, admin auth guards (unauthenticated + customer token both rejected), full audit log for all 5 page events, scopePublished
+- [x] cookieConsent.test.jsx — 27 tests: defaults (banner shown, consent null, version mismatch → re-ask, malformed JSON), acceptAll/reject/saveCustom (state + localStorage + banner hide), settings modal open/close (restores banner when no saved consent), GA4 gate (not called before consent, not called on reject, called on analytics accept, not called without GA ID, correct on mount from stored consent), provider guard
+- [x] guestAccess.test.jsx — rewritten for threads pool: static imports + proper mock set (CookieConsentProvider, CookieBanner, Footer); replaced vi.resetModules()+dynamic import pattern; fixed nested-router test; added auth-state-aware nav tests (guest sees SIGN IN, user sees DASHBOARD)
+- [x] vite.config.js: pool: 'threads' — WSL2 cannot reliably fork processes across /mnt/c; threads avoids the 60s worker timeout; all 35 frontend tests pass
+- [x] AdminPageController::store(): explicit $data['status'] ??= 'draft' — DB default not reflected on in-memory Eloquent instance without ->fresh(); ensures response always contains status
+- [x] Validation error assertion pattern: use ->assertJsonPath('error.code', 'VALIDATION_ERROR') + expect($res->json('error.details'))->toHaveKey('field') — our custom envelope puts errors in error.details not errors (assertJsonValidationErrors is wrong for this project)
+- [x] MFA QR double-btoa fix: AdminMfaService::generateQrBase64() returns already-base64-encoded SVG; AdminLogin.jsx was double-encoding with btoa() — removed btoa() so src uses qrCode directly (AdminAccount.jsx was already correct)
+- [x] phpunit.xml: APP_KEY added (base64:QUFB...QUE=, 32-byte AES key) — fixes MissingAppKeyException for encrypted mfa_secret + mfa_recovery_codes casts in all test runners (Docker + CI)
+- [x] backend/.env.testing created — required by CI workflow (cp .env.testing .env then php artisan key:generate); MySQL settings match the CI service container
+- [x] MFA recovery codes: Download PDF button added to both recovery-code screens (AdminLogin forced-setup + AdminAccount in-session setup); jsPDF (frontend-only, no server call); PDF contains app name, label, date, codes, warnings; plaintext codes never leave the browser
+- [x] Admin user creation: POST /admin/users endpoint; StoreUserRequest (name/email/password/status); USER_CREATED audit event with safe metadata; creates customer User only; CreateUserModal in AdminUsers.jsx with field-level validation error display
 
 ---
 
