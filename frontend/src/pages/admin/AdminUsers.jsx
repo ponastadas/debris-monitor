@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import adminClient from '../../api/adminClient';
 
@@ -31,10 +32,16 @@ function Badge({ type, value }) {
   );
 }
 
+const fieldStyle = {
+  width: '100%', background: '#010409', border: '1px solid rgba(48,54,61,0.8)',
+  borderRadius: 4, color: '#e6edf3', fontFamily: "'JetBrains Mono', monospace",
+  fontSize: 12, padding: '8px 10px', outline: 'none', boxSizing: 'border-box',
+};
+
 function EditModal({ user, onClose, onSaved }) {
-  const toast                   = useToast();
-  const [form, setForm]         = useState({ status: user.status });
-  const [loading, setLoading]   = useState(false);
+  const toast                 = useToast();
+  const [form, setForm]       = useState({ name: user.name, status: user.status });
+  const [loading, setLoading] = useState(false);
 
   const save = async () => {
     setLoading(true);
@@ -57,32 +64,38 @@ function EditModal({ user, onClose, onSaved }) {
     }}>
       <div style={{
         background: '#161b22', border: '1px solid rgba(0,212,255,0.2)',
-        borderRadius: 8, padding: '24px', width: 360,
+        borderRadius: 8, padding: '24px', width: 380,
         fontFamily: "'JetBrains Mono', monospace",
       }}>
-        <h3 style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 13, color: '#e6edf3', marginBottom: 4 }}>
+        <h3 style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 13, color: '#e6edf3', marginBottom: 4, marginTop: 0 }}>
           Edit User
         </h3>
         <p style={{ fontSize: 11, color: '#8b949e', marginBottom: 20 }}>{user.email}</p>
 
-        {[['Status', 'status', ['active', 'suspended']]].map(([label, field, opts]) => (
-          <div key={field} style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 10, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>{label}</label>
-            <select
-              value={form[field]}
-              onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
-              style={{
-                width: '100%', background: '#010409', border: '1px solid rgba(48,54,61,0.8)',
-                borderRadius: 4, color: '#e6edf3', fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 12, padding: '8px 10px', outline: 'none',
-              }}
-            >
-              {opts.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </div>
-        ))}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: 10, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Name</label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            maxLength={100}
+            style={fieldStyle}
+          />
+          <p style={{ fontSize: 10, color: '#484f58', margin: '3px 0 0' }}>Display name only. Email is not editable by admins.</p>
+        </div>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', fontSize: 10, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Status</label>
+          <select
+            value={form.status}
+            onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+            style={fieldStyle}
+          >
+            {['active', 'suspended'].map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={save} disabled={loading}
             style={{
@@ -111,14 +124,114 @@ function EditModal({ user, onClose, onSaved }) {
   );
 }
 
+function CreateUserModal({ onClose, onCreated }) {
+  const toast                 = useToast();
+  const [form, setForm]       = useState({ name: '', email: '', password: '', status: 'active' });
+  const [errors, setErrors]   = useState({});
+  const [loading, setLoading] = useState(false);
+
+  const save = async () => {
+    setErrors({});
+    setLoading(true);
+    try {
+      const r = await adminClient.post('/admin/users', form);
+      onCreated(r.data.data);
+      toast.success('User created.');
+      onClose();
+    } catch (err) {
+      if (err.details && typeof err.details === 'object') {
+        setErrors(err.details);
+      } else {
+        toast.error(err.message ?? 'Failed to create user.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const field = (key) => ({
+    value: form[key],
+    onChange: (e) => setForm((f) => ({ ...f, [key]: e.target.value })),
+  });
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(1,4,9,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+    }}>
+      <div style={{
+        background: '#161b22', border: '1px solid rgba(0,212,255,0.2)',
+        borderRadius: 8, padding: '24px', width: 400,
+        fontFamily: "'JetBrains Mono', monospace",
+      }}>
+        <h3 style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 13, color: '#e6edf3', marginBottom: 20, marginTop: 0 }}>
+          Create User
+        </h3>
+
+        {[
+          { key: 'name',  label: 'Name',  type: 'text',     placeholder: 'Full name' },
+          { key: 'email', label: 'Email', type: 'email',    placeholder: 'user@example.com' },
+          { key: 'password', label: 'Password', type: 'password', placeholder: 'Min. 8 characters' },
+        ].map(({ key, label, type, placeholder }) => (
+          <div key={key} style={{ marginBottom: 14 }}>
+            <label style={{ display: 'block', fontSize: 10, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>
+              {label}
+            </label>
+            <input type={type} placeholder={placeholder} {...field(key)} style={fieldStyle} />
+            {errors[key] && (
+              <p style={{ fontSize: 10, color: '#f85149', margin: '3px 0 0' }}>{errors[key][0]}</p>
+            )}
+          </div>
+        ))}
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', fontSize: 10, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>
+            Status
+          </label>
+          <select {...field('status')} style={fieldStyle}>
+            {['active', 'suspended'].map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={save} disabled={loading}
+            style={{
+              flex: 1, background: 'rgba(0,212,255,0.15)', border: '1px solid rgba(0,212,255,0.4)',
+              borderRadius: 4, color: '#00d4ff', fontFamily: "'Orbitron', sans-serif",
+              fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', padding: '10px',
+              cursor: loading ? 'not-allowed' : 'pointer', textTransform: 'uppercase',
+            }}
+          >
+            {loading ? '...' : 'CREATE'}
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1, background: 'rgba(48,54,61,0.4)', border: '1px solid rgba(48,54,61,0.8)',
+              borderRadius: 4, color: '#8b949e', fontFamily: "'Orbitron', sans-serif",
+              fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', padding: '10px',
+              cursor: 'pointer', textTransform: 'uppercase',
+            }}
+          >
+            CANCEL
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminUsers() {
   const toast               = useToast();
+  const navigate            = useNavigate();
   const [users, setUsers]   = useState([]);
   const [meta, setMeta]     = useState({});
   const [page, setPage]     = useState(1);
   const [filters, setFilters] = useState({ search: '', status: '' });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   const load = async (p = page) => {
     setLoading(true);
@@ -156,9 +269,22 @@ export default function AdminUsers() {
 
   return (
     <div>
-      <h1 style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 16, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 20 }}>
-        Users
-      </h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <h1 style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 16, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', margin: 0 }}>
+          Users
+        </h1>
+        <button
+          onClick={() => setCreating(true)}
+          style={{
+            background: 'rgba(0,212,255,0.12)', border: '1px solid rgba(0,212,255,0.4)',
+            borderRadius: 4, color: '#00d4ff', fontFamily: "'Orbitron', sans-serif",
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', padding: '8px 14px',
+            cursor: 'pointer', textTransform: 'uppercase',
+          }}
+        >
+          + Create User
+        </button>
+      </div>
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -222,8 +348,14 @@ export default function AdminUsers() {
                   </td>
                   <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                     <button
+                      onClick={() => navigate(`/admin/users/${u.id}`)}
+                      style={{ background: 'none', border: '1px solid rgba(48,54,61,0.6)', borderRadius: 4, color: '#8b949e', fontSize: 10, padding: '4px 8px', cursor: 'pointer', marginRight: 4 }}
+                    >
+                      VIEW
+                    </button>
+                    <button
                       onClick={() => setEditing(u)}
-                      style={{ background: 'none', border: '1px solid rgba(48,54,61,0.8)', borderRadius: 4, color: '#8b949e', fontSize: 10, padding: '4px 8px', cursor: 'pointer', marginRight: 6 }}
+                      style={{ background: 'none', border: '1px solid rgba(48,54,61,0.8)', borderRadius: 4, color: '#8b949e', fontSize: 10, padding: '4px 8px', cursor: 'pointer', marginRight: 4 }}
                     >
                       EDIT
                     </button>
@@ -264,6 +396,13 @@ export default function AdminUsers() {
           user={editing}
           onClose={() => setEditing(null)}
           onSaved={(updated) => setUsers((us) => us.map((u) => u.id === updated.id ? updated : u))}
+        />
+      )}
+
+      {creating && (
+        <CreateUserModal
+          onClose={() => setCreating(false)}
+          onCreated={() => load(1)}
         />
       )}
     </div>

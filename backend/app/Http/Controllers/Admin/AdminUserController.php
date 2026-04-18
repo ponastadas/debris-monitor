@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Models\AdminAuditLog;
 use App\Models\User;
@@ -11,6 +12,28 @@ use Illuminate\Http\Request;
 
 class AdminUserController extends Controller
 {
+    public function store(StoreUserRequest $request): JsonResponse
+    {
+        $admin = auth('admin')->user();
+
+        $user = User::create([
+            'name'     => $request->name,
+            'email'    => $request->email,
+            'password' => $request->password, // hashed by the cast on User
+            'status'   => $request->input('status', 'active'),
+        ]);
+
+        AdminAuditLog::record(
+            $admin->id,
+            AdminAuditLog::USER_CREATED,
+            'User',
+            $user->id,
+            ['email' => $user->email, 'name' => $user->name, 'status' => $user->status],
+        );
+
+        return $this->success($this->userResource($user), 201);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $users = User::query()
