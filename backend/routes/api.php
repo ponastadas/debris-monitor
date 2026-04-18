@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\AdminAuditLogController;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AdminMfaController;
+use App\Http\Controllers\Admin\AdminPageController;
 use App\Http\Controllers\Admin\AdminPaymentController;
 use App\Http\Controllers\Admin\AdminSubscriptionController;
 use App\Http\Controllers\Admin\AdminUserController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\ApiKeyController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\ConjunctionController;
+use App\Http\Controllers\PageController;
 use App\Http\Controllers\SatelliteController;
 use App\Http\Controllers\WatchedSatelliteController;
 use App\Http\Middleware\HandlePublicRequest;
@@ -23,6 +25,13 @@ use Illuminate\Support\Facades\Route;
 | Debris Monitor API Routes
 |--------------------------------------------------------------------------
 */
+
+// ── Public CMS pages ──────────────────────────────────────────────────────────
+// Read-only. Only published pages are returned.
+Route::prefix('pages')->group(function () {
+    Route::get('/',        [PageController::class, 'index']);
+    Route::get('/{slug}',  [PageController::class, 'show'])->where('slug', '[a-z0-9-]+');
+});
 
 // Health check — used by Docker HEALTHCHECK and uptime monitors
 Route::get('/health', fn () => response()->json([
@@ -98,6 +107,7 @@ Route::prefix('admin')->middleware(['auth:admin', 'admin'])->group(function () {
     Route::get('/dashboard',                  [AdminDashboardController::class, 'index']);
 
     Route::get('/users',                      [AdminUserController::class, 'index']);
+    Route::post('/users',                     [AdminUserController::class, 'store']);
     Route::get('/users/{user}',               [AdminUserController::class, 'show']);
     Route::patch('/users/{user}',             [AdminUserController::class, 'update']);
     Route::post('/users/{user}/impersonate',  [AdminUserController::class, 'impersonate']);
@@ -110,6 +120,15 @@ Route::prefix('admin')->middleware(['auth:admin', 'admin'])->group(function () {
     Route::get('/api-keys',                   [AdminApiKeyController::class, 'index']);
 
     Route::get('/audit-log',                  [AdminAuditLogController::class, 'index']);
+
+    // CMS pages
+    Route::get('/pages',                            [AdminPageController::class, 'index']);
+    Route::post('/pages',                           [AdminPageController::class, 'store']);
+    Route::get('/pages/{page}',                     [AdminPageController::class, 'show']);
+    Route::patch('/pages/{page}',                   [AdminPageController::class, 'update']);
+    Route::delete('/pages/{page}',                  [AdminPageController::class, 'destroy']);
+    Route::post('/pages/{page}/publish',            [AdminPageController::class, 'publish']);
+    Route::post('/pages/{page}/unpublish',          [AdminPageController::class, 'unpublish']);
 
     // MFA management (requires existing admin session)
     Route::prefix('auth/mfa')->group(function () {

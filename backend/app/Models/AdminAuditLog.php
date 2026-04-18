@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  *   User management
  *     IMPERSONATION_STARTED  impersonation.started
+ *     USER_CREATED           user.created           admin manually created a customer account
  *     USER_UPDATED           user.updated           field changes (name, etc.)
  *     USER_SUSPENDED         user.suspended
  *     USER_ACTIVATED         user.activated
@@ -43,6 +44,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *     MFA_CHALLENGE_PASSED   mfa.challenge_passed
  *     MFA_CHALLENGE_FAILED   mfa.challenge_failed
  *     MFA_RECOVERY_USED      mfa.recovery_used
+ *
+ *   Pages (CMS)
+ *     PAGE_CREATED           page.created
+ *     PAGE_UPDATED           page.updated
+ *     PAGE_PUBLISHED         page.published
+ *     PAGE_UNPUBLISHED       page.unpublished
+ *     PAGE_DELETED           page.deleted
  */
 class AdminAuditLog extends Model
 {
@@ -56,6 +64,7 @@ class AdminAuditLog extends Model
 
     // User management
     const IMPERSONATION_STARTED  = 'impersonation.started';
+    const USER_CREATED           = 'user.created';
     const USER_UPDATED           = 'user.updated';
     const USER_SUSPENDED         = 'user.suspended';
     const USER_ACTIVATED         = 'user.activated';
@@ -73,6 +82,13 @@ class AdminAuditLog extends Model
     const MFA_CHALLENGE_PASSED   = 'mfa.challenge_passed';
     const MFA_CHALLENGE_FAILED   = 'mfa.challenge_failed';
     const MFA_RECOVERY_USED      = 'mfa.recovery_used';
+
+    // Pages (CMS)
+    const PAGE_CREATED           = 'page.created';
+    const PAGE_UPDATED           = 'page.updated';
+    const PAGE_PUBLISHED         = 'page.published';
+    const PAGE_UNPUBLISHED       = 'page.unpublished';
+    const PAGE_DELETED           = 'page.deleted';
 
     // ── Model config ──────────────────────────────────────────────────────────
 
