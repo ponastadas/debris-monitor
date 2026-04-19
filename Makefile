@@ -21,6 +21,7 @@ setup:
 	docker compose -f docker-compose.local.yml up -d db
 	@echo "Waiting for DB..."
 	@sleep 8
+	docker compose -f docker-compose.local.yml build backend
 	docker compose -f docker-compose.local.yml run --rm backend php artisan key:generate
 	docker compose -f docker-compose.local.yml run --rm backend php artisan migrate --seed
 	@echo "Syncing satellite catalog (fetches ~10k objects from CelesTrak — takes ~30s)..."
