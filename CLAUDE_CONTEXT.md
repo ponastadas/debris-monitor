@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Last updated: 2026-04-19 (session 25 — UX honesty pass + 2 bug fixes: AlertController returns source+meta, per-alert source badges, data credibility header, Tracker footer updated, PageSeeder adds How It Works page, Footer links to /pages/how-it-works; fixed Tracker "Could not load satellite" by removing 6h TLE staleness check in SatelliteController; fixed search returning empty for colloquial names by adding ALIASES map in SatelliteSearchController; fixed APP_KEY corruption in Makefile by replacing artisan key:generate with Python one-liner). Use this to onboard Claude Code in new sessions.
+> Last updated: 2026-04-19 (session 25/26 — search bugfix pass: /api/satellites/search moved outside HandlePublicRequest (was consuming guest quota); SatelliteSyncCommand chunked to fix MySQL 65535 placeholder limit; GROUP=active replaced with targeted CelesTrak groups (weather/goes/resource/etc.); alias lookup always runs and prepends result so "hubble"→HST even when DB has LEMUR-2-HUBBLE matches; LOCAL_CATALOG + Tracker QUICK_SATS NORAD IDs corrected (GOES-16=41866, Sentinel-1A=39634, ICESat-2=43613, etc.). Use this to onboard Claude Code in new sessions.
 
 ---
 
