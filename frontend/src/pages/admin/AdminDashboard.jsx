@@ -73,6 +73,56 @@ function PlanBadge({ plan }) {
   );
 }
 
+function CatalogStatus({ catalog }) {
+  if (!catalog) return null;
+
+  const synced = catalog.synced_at
+    ? new Date(catalog.synced_at).toLocaleString()
+    : null;
+
+  const typeColors = { satellite: '#388bfd', debris: '#f85149', rocket_body: '#d29922' };
+  const typeLabels = { satellite: 'Satellites', debris: 'Debris', rocket_body: 'Rocket Bodies' };
+
+  return (
+    <div style={{
+      background: '#161b22',
+      border: '1px solid rgba(48,54,61,0.6)',
+      borderRadius: 6,
+      padding: '18px 20px',
+    }}>
+      <div style={{ fontSize: 10, color: '#8b949e', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 16 }}>
+        Satellite Catalog
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
+        <span style={{ fontSize: 26, color: catalog.total > 0 ? '#e6edf3' : '#484f58', fontFamily: "'Orbitron', sans-serif" }}>
+          {catalog.total.toLocaleString()}
+        </span>
+        <span style={{ fontSize: 11, color: '#8b949e' }}>objects with TLE</span>
+      </div>
+
+      {Object.entries(catalog.by_type ?? {}).map(([type, count]) => (
+        <div key={type} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <span style={{ fontSize: 10, color: typeColors[type] ?? '#8b949e' }}>
+            {typeLabels[type] ?? type}
+          </span>
+          <span style={{ fontSize: 11, color: '#e6edf3' }}>{Number(count).toLocaleString()}</span>
+        </div>
+      ))}
+
+      {catalog.total === 0 && (
+        <div style={{ fontSize: 10, color: '#f85149', marginBottom: 8 }}>
+          Catalog empty — run <code style={{ fontFamily: 'monospace', background: '#0d1117', padding: '1px 4px' }}>make sync-catalog</code>
+        </div>
+      )}
+
+      <div style={{ marginTop: 12, fontSize: 10, color: '#484f58' }}>
+        {synced ? `Last sync: ${synced}` : 'Never synced'}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const toast               = useToast();
   const [stats, setStats]   = useState(null);
@@ -130,6 +180,10 @@ export default function AdminDashboard() {
                 <p style={{ fontSize: 11, color: '#484f58' }}>No active subscriptions yet.</p>
               )}
             </div>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <CatalogStatus catalog={stats?.catalog} />
           </div>
         </>
       )}

@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\ApiUsage;
 use App\Models\Subscription;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 
 class AdminDashboardController extends Controller
 {
@@ -15,13 +17,14 @@ class AdminDashboardController extends Controller
         $today = today();
 
         return $this->success([
-            'active_users'       => User::where('status', 'active')->count(),
-            'suspended_users'    => User::where('status', 'suspended')->count(),
-            'new_signups_today'  => User::whereDate('created_at', $today)->count(),
+            'active_users'          => User::where('status', 'active')->count(),
+            'suspended_users'       => User::where('status', 'suspended')->count(),
+            'new_signups_today'     => User::whereDate('created_at', $today)->count(),
             'total_api_calls_today' => ApiUsage::whereDate('created_at', $today)->count(),
-            'mrr_cents'          => $this->calculateMrr(),
-            'signups_last_30_days' => $this->signupsLast30Days(),
-            'plan_distribution'  => $this->planDistribution(),
+            'mrr_cents'             => $this->calculateMrr(),
+            'signups_last_30_days'  => $this->signupsLast30Days(),
+            'plan_distribution'     => $this->planDistribution(),
+            'catalog'               => $this->catalogStats(),
         ]);
     }
 
@@ -57,5 +60,36 @@ class AdminDashboardController extends Controller
             ->groupBy('plan')
             ->pluck('count', 'plan')
             ->toArray();
+    }
+
+    /**
+     * Catalog health snapshot — total satellites with current TLE, last sync time, count by type.
+     * Returns zeros/null when the catalog has never been synced.
+     */
+    private function catalogStats(): array
+    {
+        $total = DB::table('tle_records')->where('is_current', true)->count();
+
+        $syncedAt = null;
+        if ($total > 0) {
+            $max      = DB::table('tle_records')->where('is_current', true)->max('fetched_at');
+            $syncedAt = $max ? Carbon::parse($max)->toIso8601String() : null;
+        }
+
+        $byType = DB::table('satellites as s')
+            ->join('tle_records as t', function ($join) {
+                $join->on('t.satellite_id', '=', 's.id')->where('t.is_current', true);
+            })
+            ->select('s.object_type', DB::raw('COUNT(*) as count'))
+            ->groupBy('s.object_type')
+            ->get()
+            ->pluck('count', 'object_type')
+            ->toArray();
+
+        return [
+            'total'     => $total,
+            'synced_at' => $syncedAt,
+            'by_type'   => $byType,
+        ];
     }
 }

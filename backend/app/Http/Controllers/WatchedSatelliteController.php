@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Satellite;
 use App\Models\WatchedSatellite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,12 +40,7 @@ class WatchedSatelliteController extends Controller
             return response()->json(['message' => 'Already watching this satellite.'], 409);
         }
 
-        // Resolve name from CelesTrak if not provided
-        $name = $request->input('name');
-        if (! $name) {
-            $tle  = $this->fetchTle($noradId);
-            $name = $tle['name'] ?? $noradId;
-        }
+        $name = $request->input('name') ?: $this->resolveName($noradId);
 
         $sat = $request->user()->watchedSatellites()->create([
             'norad_id' => $noradId,
@@ -66,7 +62,27 @@ class WatchedSatelliteController extends Controller
         return response()->json(['message' => 'Satellite removed from watch list.']);
     }
 
-    private function fetchTle(string $noradId): ?array
+    /**
+     * Resolve a display name for a NORAD ID.
+     * Checks local catalog first — no network call when satellite is in the catalog.
+     * Falls back to a live CelesTrak lookup only when the satellite is unknown locally.
+     */
+    private function resolveName(string $noradId): string
+    {
+        $local = Satellite::where('norad_id', $noradId)->value('name');
+
+        if ($local) {
+            return $local;
+        }
+
+        return $this->fetchNameFromCelesTrak($noradId) ?? $noradId;
+    }
+
+    /**
+     * Last-resort live fetch from CelesTrak when the satellite is not in local catalog.
+     * The result is NOT cached here — the satellites:sync command owns catalog population.
+     */
+    private function fetchNameFromCelesTrak(string $noradId): ?string
     {
         try {
             $response = Http::timeout(8)->get(
@@ -83,9 +99,7 @@ class WatchedSatelliteController extends Controller
                 fn ($l) => $l !== ''
             ));
 
-            return count($lines) >= 3
-                ? ['name' => $lines[0], 'line1' => $lines[1], 'line2' => $lines[2]]
-                : null;
+            return count($lines) >= 3 ? $lines[0] : null;
         } catch (\Throwable) {
             return null;
         }

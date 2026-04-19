@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    // Space-Track.org — real conjunction data (CDM_PUBLIC).
+    // Free account: https://www.space-track.org/auth/#/login
+    // Leave blank to skip CDM sync (conjunctions:sync will exit cleanly).
+    'space_track' => [
+        'user' => env('SPACE_TRACK_USER'),
+        'pass' => env('SPACE_TRACK_PASS'),
+    ],
+
 ];

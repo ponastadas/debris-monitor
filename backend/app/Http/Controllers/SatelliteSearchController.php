@@ -2,23 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Satellite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 
 class SatelliteSearchController extends Controller
 {
-    private const CELESTRAK_URL = 'https://celestrak.org/NORAD/elements/gp.php';
-    private const MAX_RESULTS   = 10;
+    private const MAX_RESULTS = 10;
 
     /**
-     * Search for satellites by name or NORAD ID.
+     * Search the local satellite catalog by NORAD ID or name.
      *
      * GET /api/satellites/search?q=ISS
      * GET /api/satellites/search?q=25544
      *
      * Returns up to 10 matches: [{norad_id, name}].
-     * No auth required — sits behind HandlePublicRequest (guest quota applies).
+     * Served entirely from local DB — no live CelesTrak call.
+     * Run `php artisan satellites:sync` to populate the catalog.
      */
     public function __invoke(Request $request): JsonResponse
     {
@@ -30,45 +30,23 @@ class SatelliteSearchController extends Controller
 
         $isNumeric = ctype_digit($q);
 
-        try {
-            $param    = $isNumeric ? ['CATNR' => $q] : ['NAME' => $q];
-            $response = Http::timeout(8)->get(self::CELESTRAK_URL, array_merge($param, ['FORMAT' => 'TLE']));
-        } catch (\Throwable) {
-            return $this->success([]);
-        }
-
-        if (! $response->ok()) {
-            return $this->success([]);
-        }
-
-        $body = trim($response->body());
-
-        if (! $body || str_contains($body, 'No GP data') || str_contains($body, 'No results')) {
-            return $this->success([]);
-        }
-
-        $lines   = array_values(array_filter(
-            array_map('trim', explode("\n", $body)),
-            fn ($l) => $l !== ''
-        ));
-        $results = [];
-
-        for ($i = 0; $i + 2 < count($lines); $i += 3) {
-            $line1 = $lines[$i + 1];
-            $line2 = $lines[$i + 2];
-
-            if (! str_starts_with($line1, '1 ') || ! str_starts_with($line2, '2 ')) {
-                continue;
-            }
-
-            $results[] = [
-                'norad_id' => trim(substr($line1, 2, 5)),
-                'name'     => $lines[$i],
-            ];
-
-            if (count($results) >= self::MAX_RESULTS) {
-                break;
-            }
+        if ($isNumeric) {
+            // Exact NORAD ID match first, then prefix search
+            $results = Satellite::where('norad_id', $q)
+                ->orWhere('norad_id', 'like', "{$q}%")
+                ->limit(self::MAX_RESULTS)
+                ->get(['norad_id', 'name'])
+                ->map(fn ($s) => ['norad_id' => $s->norad_id, 'name' => $s->name])
+                ->values();
+        } else {
+            // Name search — exact prefix match scored above substring match
+            $results = Satellite::where('name', 'like', "{$q}%")
+                ->orWhere('name', 'like', "%{$q}%")
+                ->orderByRaw("CASE WHEN name LIKE ? THEN 0 ELSE 1 END", ["{$q}%"])
+                ->limit(self::MAX_RESULTS)
+                ->get(['norad_id', 'name'])
+                ->map(fn ($s) => ['norad_id' => $s->norad_id, 'name' => $s->name])
+                ->values();
         }
 
         return $this->success($results);

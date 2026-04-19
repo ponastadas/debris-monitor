@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminApiKeyController;
+use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\Admin\AdminAuditLogController;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminDashboardController;
@@ -33,6 +34,11 @@ Route::prefix('pages')->group(function () {
     Route::get('/',        [PageController::class, 'index']);
     Route::get('/{slug}',  [PageController::class, 'show'])->where('slug', '[a-z0-9-]+');
 });
+
+// Satellite catalog — full local TLE catalog for the globe view.
+// Public, no auth, no rate limit. Cache-Control: public, max-age=3600.
+// Returns empty array when catalog has not been synced yet (run satellites:sync).
+Route::get('/catalog', [CatalogController::class, 'index']);
 
 // Health check — used by Docker HEALTHCHECK and uptime monitors
 Route::get('/health', fn () => response()->json([

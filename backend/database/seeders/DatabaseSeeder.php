@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
             AdminAccountSeeder::class,
             PageSeeder::class,
             AlertDemoSeeder::class,
+            ConjunctionEventSeeder::class,
         ]);
     }
 }

@@ -462,27 +462,17 @@ export default function DebrisMonitor({ onTrack }) {
     };
   }, []);
 
-  // Fetch TLE data
+  // Fetch TLE data — prefers local catalog API, falls back to direct CelesTrak group fetches.
+  // Local catalog is populated by `php artisan satellites:sync` (scheduled every 6 hours).
+  // When catalog is empty (fresh dev environment), CelesTrak fetches still work as before.
+  const [dataSource, setDataSource] = useState(null); // 'local' | 'celestrak' | null
+
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      const allObjects = [];
-      for (let i = 0; i < TLE_GROUPS.length; i++) {
-        const g = TLE_GROUPS[i];
-        setLoading({ active: true, pct: Math.round((i / TLE_GROUPS.length) * 90), msg: `Loading ${g.type} data…` });
-        try {
-          const res  = await fetch(g.url);
-          const text = await res.text();
-          allObjects.push(...parseTleText(text, g.type));
-        } catch {
-          // skip failed group
-        }
-        if (cancelled) return;
-      }
 
+    function finalise(allObjects, source) {
+      if (cancelled) return;
       objectsRef.current = allObjects;
-
-      // Count bands
       const bands = { LEO: 0, MEO: 0, "HEO/GEO": 0 };
       const cnts  = { satellite: 0, debris: 0, rocket: 0, unknown: 0, total: 0 };
       allObjects.forEach(o => {
@@ -493,11 +483,54 @@ export default function DebrisMonitor({ onTrack }) {
       });
       setCounts(cnts);
       setBandCounts(bands);
-
+      setDataSource(source);
       setLoading({ active: true, pct: 95, msg: "Building scene…" });
       buildMesh(allObjects);
       setLoading({ active: false, pct: 100, msg: "Done" });
     }
+
+    async function loadFromLocalCatalog() {
+      setLoading({ active: true, pct: 15, msg: "Loading local catalog…" });
+      // fetch() uses browser cache automatically (Cache-Control + ETag handled transparently).
+      const res  = await fetch("/api/catalog");
+      if (!res.ok) return null;
+      const json = await res.json();
+      const sats = json?.data?.satellites ?? [];
+      if (!sats.length) return null;
+      // Response shape: { name, type, line1, line2 } — norad_id is in line1[2:7] if needed.
+      return sats.map(s => ({ name: s.name, line1: s.line1, line2: s.line2, type: s.type }));
+    }
+
+    async function loadFromCelesTrak() {
+      const allObjects = [];
+      for (let i = 0; i < TLE_GROUPS.length; i++) {
+        if (cancelled) return allObjects;
+        const g = TLE_GROUPS[i];
+        setLoading({ active: true, pct: Math.round((i / TLE_GROUPS.length) * 80) + 10, msg: `Loading ${g.type} data…` });
+        try {
+          const res  = await fetch(g.url);
+          const text = await res.text();
+          allObjects.push(...parseTleText(text, g.type));
+        } catch { /* skip failed group */ }
+      }
+      return allObjects;
+    }
+
+    async function load() {
+      try {
+        const local = await loadFromLocalCatalog();
+        if (local && local.length > 0 && !cancelled) {
+          finalise(local, 'local');
+          return;
+        }
+      } catch { /* local catalog unavailable — fall through */ }
+
+      if (cancelled) return;
+      setLoading({ active: true, pct: 10, msg: "Local catalog empty — fetching from CelesTrak…" });
+      const remote = await loadFromCelesTrak();
+      if (!cancelled) finalise(remote, 'celestrak');
+    }
+
     load();
     return () => { cancelled = true; };
   }, []);
@@ -693,7 +726,12 @@ export default function DebrisMonitor({ onTrack }) {
           <div className="corner-hud tl" /><div className="corner-hud tr" />
           <div className="corner-hud bl" /><div className="corner-hud br" />
           <div className="fps-badge">{fps} FPS · {counts.total.toLocaleString()} OBJECTS</div>
-          <div className="globe-label">DEBRIS MONITOR · REAL-TIME CATALOG</div>
+          <div className="globe-label">
+            DEBRIS MONITOR ·{" "}
+            {dataSource === 'local'     && "LOCAL CATALOG"}
+            {dataSource === 'celestrak' && "CELESTRAK DATA"}
+            {!dataSource               && "REAL-TIME CATALOG"}
+          </div>
 
           {loading.active && (
             <div className="loading-overlay">

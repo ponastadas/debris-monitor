@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\ConjunctionAlert;
+use App\Models\Satellite;
 use App\Models\User;
 use App\Models\WatchedSatellite;
 use App\Notifications\ConjunctionAlertNotification;
@@ -50,24 +51,42 @@ class CheckConjunctionsCommand extends Command
         $this->info("Checking {$watched->count()} watched satellite(s) against debris catalog…");
 
         // ── 2. Refresh stale TLEs for watched satellites ──────────────────
+        // Prefer local satellite catalog (Satellite + TleRecord tables);
+        // fall back to live CelesTrak only when the local catalog has no entry.
         foreach ($watched as $sat) {
             if ($sat->hasFreshTle()) {
                 continue;
             }
-            $tle = $this->fetchTle($sat->norad_id);
+
+            // Try local catalog first.
+            $localSat = Satellite::with('currentTle')
+                ->where('norad_id', $sat->norad_id)
+                ->first();
+
+            if ($localSat && $localSat->currentTle) {
+                $tle = [
+                    'name'  => $localSat->name,
+                    'line1' => $localSat->currentTle->line1,
+                    'line2' => $localSat->currentTle->line2,
+                ];
+            } else {
+                // Fall back to CelesTrak for satellites not yet in local catalog.
+                $tle = $this->fetchTle($sat->norad_id);
+            }
+
             if ($tle === null) {
                 $this->warn("  Could not fetch TLE for NORAD {$sat->norad_id} ({$sat->name})");
                 continue;
             }
             if (! $isDryRun) {
                 $sat->update([
-                    'name'          => $tle['name'],
-                    'tle_line1'     => $tle['line1'],
-                    'tle_line2'     => $tle['line2'],
+                    'name'           => $tle['name'],
+                    'tle_line1'      => $tle['line1'],
+                    'tle_line2'      => $tle['line2'],
                     'tle_fetched_at' => now(),
                 ]);
             }
-            $sat->name     = $tle['name'];
+            $sat->name      = $tle['name'];
             $sat->tle_line1 = $tle['line1'];
             $sat->tle_line2 = $tle['line2'];
         }
@@ -147,6 +166,7 @@ class CheckConjunctionsCommand extends Command
                     'tca'                => $tcaRounded,
                     'miss_distance_km'   => $result['miss_km'],
                     'risk_score'         => $result['risk_score'],
+                    'source'             => 'sgp4',
                 ]);
 
                 $this->notifyWatchers($sat->norad_id, $alert);

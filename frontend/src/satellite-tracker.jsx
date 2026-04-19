@@ -458,22 +458,17 @@ function createSatelliteTexture(colorHex) {
 }
 
 /**
- * Fetch a TLE-derived satellite.js satrec for a real NORAD ID from CelesTrak.
- * Returns null if the object is not found, TLE is invalid, or network fails.
- * Callers must treat null as "data unavailable — use approx fallback."
+ * Fetch a TLE-derived satellite.js satrec via the internal API.
+ * Uses local DB first; backend falls back to CelesTrak only when the satellite
+ * is not in the catalog. Returns null on any error — callers use approx fallback.
  */
 async function fetchSecondaryTle(noradId) {
   if (!noradId) return null;
   try {
-    const res = await fetch(
-      `https://celestrak.org/NORAD/elements/gp.php?CATNR=${encodeURIComponent(noradId)}&FORMAT=TLE`
-    );
-    if (!res.ok) return null;
-    const text = await res.text();
-    if (!text || text.includes('No GP data') || text.includes('No results')) return null;
-    const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length < 3 || !lines[1].startsWith('1 ') || !lines[2].startsWith('2 ')) return null;
-    const satrec = satellite.twoline2satrec(lines[1], lines[2]);
+    const res  = await client.get(`/satellites/${noradId}`);
+    const data = res.data?.data ?? res.data;
+    if (!data?.tle_line1 || !data?.tle_line2) return null;
+    const satrec = satellite.twoline2satrec(data.tle_line1, data.tle_line2);
     return satrec.error !== 0 ? null : satrec;
   } catch {
     return null;
@@ -590,24 +585,20 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
   }, []);
 
   // Auto-track the satellite specified by initialNoradId (e.g. arriving from an Alerts card).
-  // Runs once on mount. By the time the async CelesTrak fetch resolves Three.js is already
-  // initialised — the Three.js useEffect runs synchronously before any async work completes.
+  // Runs once on mount. Three.js initialises synchronously; the async fetch resolves after.
+  // Uses internal API (local DB → CelesTrak fallback) instead of direct CelesTrak access.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!initialNoradId) return;
     const id = initialNoradId;
     (async () => {
       try {
-        const res  = await fetch(
-          `https://celestrak.org/NORAD/elements/gp.php?CATNR=${encodeURIComponent(id)}&FORMAT=TLE`
-        );
-        const text = await res.text();
-        if (!text || text.includes('No GP data') || text.includes('No results')) return;
-        const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
-        if (lines.length >= 3 && lines[1].startsWith('1 ') && lines[2].startsWith('2 ')) {
-          addSatellite(lines[0], id, lines[1], lines[2]);
+        const res  = await client.get(`/satellites/${id}`);
+        const data = res.data?.data ?? res.data;
+        if (data?.tle_line1 && data?.tle_line2) {
+          addSatellite(data.name ?? id, id, data.tle_line1, data.tle_line2);
         }
-      } catch { /* CelesTrak unreachable — leave tracker empty */ }
+      } catch { /* API unreachable — leave tracker empty */ }
     })();
   }, []); // intentional: fire once on mount with the initial prop value
 
@@ -802,6 +793,7 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
   const PALETTE_CSS = ['#00d4ff','#ff6b6b','#51cf66','#ffd43b','#e599f7','#ff922b','#74c0fc','#a9e34b'];
 
   // ── Search ─────────────────────────────────────────────────
+  // Uses internal catalog API — no direct CelesTrak calls from search.
   const handleSearchChange = (q) => {
     setSearchQuery(q);
     setSearchResults([]);
@@ -812,22 +804,32 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
     searchTimerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const isId  = /^\d+$/.test(q.trim());
-        const param = isId ? `CATNR=${q.trim()}` : `NAME=${encodeURIComponent(q.trim())}`;
-        const res   = await fetch(`https://celestrak.org/NORAD/elements/gp.php?${param}&FORMAT=TLE`);
-        const text  = await res.text();
-        if (!text || text.includes('No GP data')) { setSearchResults([]); return; }
-        const lines   = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
-        const results = [];
-        for (let i = 0; i + 2 < lines.length; i += 3) {
-          if (lines[i+1].startsWith('1 ') && lines[i+2].startsWith('2 ')) {
-            results.push({ name: lines[i], noradId: lines[i+1].substring(2,7).trim(), tle1: lines[i+1], tle2: lines[i+2] });
-          }
-        }
-        setSearchResults(results.slice(0, 10));
+        const res     = await client.get('/satellites/search', { params: { q: q.trim() } });
+        const results = (res.data?.data ?? res.data ?? []).map(r => ({
+          name:    r.name,
+          noradId: r.norad_id,
+        }));
+        setSearchResults(results);
       } catch { setSearchResults([]); }
       finally  { setSearching(false); }
     }, 400);
+  };
+
+  // Fetch TLE from internal API and begin tracking the satellite.
+  // Called on search result selection and quick-sat buttons.
+  const loadAndTrack = async (noradId, knownName) => {
+    setError(null);
+    try {
+      const res  = await client.get(`/satellites/${noradId}`);
+      const data = res.data?.data ?? res.data;
+      if (!data?.tle_line1 || !data?.tle_line2) {
+        setError(`TLE not available for NORAD ${noradId}`);
+        return;
+      }
+      addSatellite(data.name ?? knownName ?? noradId, noradId, data.tle_line1, data.tle_line2);
+    } catch {
+      setError(`Could not load satellite ${noradId}`);
+    }
   };
 
   // ── Add satellite ───────────────────────────────────────────
@@ -1037,7 +1039,7 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
                 <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "#020a16", border: "1px solid rgba(0,212,255,0.2)", maxHeight: 220, overflowY: "auto" }}>
                   {searchResults.map(r => (
                     <div key={r.noradId}
-                      onClick={() => addSatellite(r.name, r.noradId, r.tle1, r.tle2)}
+                      onClick={() => { setSearchResults([]); setSearchQuery(''); loadAndTrack(r.noradId, r.name); }}
                       style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid rgba(0,212,255,0.07)", display: "flex", justifyContent: "space-between", alignItems: "center" }}
                       onMouseEnter={e => e.currentTarget.style.background = "rgba(0,212,255,0.07)"}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
@@ -1051,7 +1053,7 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
             </div>
             <div className="quick-ids" style={{ marginTop: 8 }}>
               {QUICK_SATS.map((s) => (
-                <div key={s.id} className="quick-id" onClick={() => handleSearchChange(s.id)}>
+                <div key={s.id} className="quick-id" onClick={() => loadAndTrack(s.id, s.label)}>
                   {s.label}
                 </div>
               ))}
@@ -1228,7 +1230,7 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
               </a>
             </>
           ) : (
-            'TLE SOURCE: CELESTRAK.ORG · CONJUNCTION DATA: DEBRIS.MONITOR API'
+            'TLE SOURCE: LOCAL CATALOG (CELESTRAK SYNC) · CONJUNCTION DATA: DEBRIS.MONITOR API'
           )}
         </div>
       </div>

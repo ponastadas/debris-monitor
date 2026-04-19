@@ -313,11 +313,11 @@ function AlertCard({ alert, onTrack }) {
 
 // ── SatelliteSearchPicker ─────────────────────────────────────────────────────
 // Search strategy:
-//   1. Instant: filter LOCAL_CATALOG (no network) — results appear immediately
-//   2. Deferred: 350 ms debounce → GET /api/satellites/search?q=... (proxies to CelesTrak)
+//   1. Instant: filter LOCAL_CATALOG (20 well-known satellites, no network)
+//   2. Deferred: 350 ms debounce → GET /api/satellites/search?q=... (local DB catalog)
 //      Merges with local results; if remote fails but local matched, keeps local results.
-// External dependency: backend search endpoint → CelesTrak gp.php
-// Future improvement: replace remote search with a local satellites table (TLE sync Phase 2)
+// No live CelesTrak calls — backend serves from local satellite catalog.
+// Run `php artisan satellites:sync` to populate/refresh the catalog.
 
 function SatelliteSearchPicker({ onWatched, watchedNoradIds }) {
   const [query,         setQuery]         = useState("");

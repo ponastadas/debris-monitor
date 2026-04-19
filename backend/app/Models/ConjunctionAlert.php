@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
     'primary_norad_id', 'primary_name',
     'secondary_norad_id', 'secondary_name',
     'tca', 'miss_distance_km', 'probability', 'risk_score',
+    'source', 'conjunction_event_id',
     'notified_at',
 ])]
 class ConjunctionAlert extends Model

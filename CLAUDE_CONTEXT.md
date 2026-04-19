@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Last updated: 2026-04-18 (session 20 — Alerts watch-list UX: local catalog, keyboard nav, clear button, search picker). Use this to onboard Claude Code in new sessions.
+> Last updated: 2026-04-19 (session 24 — Real conjunction data pipeline: Space-Track CDM ingestion, conjunction_events table, conjunctions:sync command, ConjunctionController prefers real CDM data). Use this to onboard Claude Code in new sessions.
 
 ---
 
@@ -175,7 +175,10 @@ make logs             # tail all logs
 make logs-backend     # backend logs only
 make shell            # bash into backend container
 make shell-db         # mysql shell
-make artisan cmd="..."  # run artisan via Docker
+make artisan cmd="..."    # run artisan via Docker
+make sync-catalog         # fetch CelesTrak TLE data into local satellites+tle_records tables
+make sync-conjunctions    # fetch real CDM data from Space-Track (requires SPACE_TRACK_USER/PASS in .env)
+make seed-conjunctions    # seed demo CDM events without credentials (ISS/Hubble/GOES-16)
 ```
 
 ---
@@ -452,8 +455,11 @@ BACKEND_URL=http://backend:8000       # Docker-only, for Vite proxy (not exposed
 | `Subscription` | belongsTo User; `isActive()`. Cashier-compat columns: name, stripe_id, stripe_price |
 | `Payment` | belongsTo User; `formattedAmount()` |
 | `Page` | no relationships; `scopePublished()`. **Table**: `pages` |
-| `ConjunctionAlert` | scopes: `upcoming()`, `unnotified()`; methods: `riskLevel()`, `hoursUntilTca()` |
+| `ConjunctionAlert` | scopes: `upcoming()`, `unnotified()`; methods: `riskLevel()`, `hoursUntilTca()`; columns: `source` (sgp4/space_track_cdm), `conjunction_event_id` (nullable FK) |
+| `ConjunctionEvent` | raw CDM ingest; scopes: `active()` (TCA ±24h−7d), `forObject(noradId)`; methods: `riskScore()`, `riskLevel()` — PC-primary, distance-secondary |
 | `WatchedSatellite` | belongsTo User; stores NORAD ID + cached TLE |
+| `Satellite` | hasMany TleRecord; currentTle() → ofMany(max fetched_at, is_current=true); norad_id unique index |
+| `TleRecord` | belongsTo Satellite; is_current=true is the live record; old records kept (is_current=false) |
 | `Subscription` | belongsTo User; plan + billing dates |
 | `Payment` | belongsTo User; payment records |
 
@@ -470,10 +476,13 @@ BACKEND_URL=http://backend:8000       # Docker-only, for Vite proxy (not exposed
 | `api_usage` | id, api_key_id, endpoint, method, status_code, response_ms, ip, created_at (no updated_at) |
 | `guest_usage` | id, identifier (guest UUID or IP), date, count; unique(identifier, date) |
 | `watched_satellites` | id, user_id, norad_id (indexed), name, tle_line1, tle_line2, tle_fetched_at |
-| `conjunction_alerts` | id, primary_norad_id, primary_name, secondary_norad_id, secondary_name, tca, miss_distance_km, probability, risk_score, notified_at |
+| `conjunction_alerts` | id, primary_norad_id, primary_name, secondary_norad_id, secondary_name, tca, miss_distance_km, probability, risk_score, source (sgp4/space_track_cdm/null), conjunction_event_id (nullable FK → conjunction_events), notified_at |
+| `conjunction_events` | id, cdm_id (unique), created_at_cdm, tca (indexed), min_range_km, probability, emergency_reportable, sat1_norad_id (indexed), sat1_name, sat2_norad_id (indexed), sat2_name, source, fetched_at, timestamps |
 | `subscriptions` | id, user_id, name (default 'default'), stripe_id (nullable), stripe_price (nullable), plan, status, current_period_start, current_period_end, canceled_at |
 | `payments` | id, user_id, amount (cents), currency, status, description, stripe_charge_id (nullable), refunded_at |
 | `pages` | id, title, slug (unique), excerpt, content (longText), status (draft/published), meta_title, meta_description, published_at, timestamps |
+| `satellites` | id, norad_id (unique indexed), name (indexed), object_type (satellite/debris/rocket_body/unknown, nullable), international_designator, country_code, launch_date, decay_date, is_active (bool), catalog_source, last_seen_at, timestamps |
+| `tle_records` | id, satellite_id (FK → satellites), line1, line2, epoch_at (nullable datetime), source, fetched_at, is_current (bool), timestamps; index(satellite_id, is_current) |
 | `personal_access_tokens` | (Sanctum) |
 
 ---
@@ -526,7 +535,7 @@ Features: category toggles, time simulation (1×/10×/1min/s/10min/s), FPS count
 
 ### SatelliteTracker.jsx
 Single satellite: enter NORAD ID → live position + 90-min orbital path + nearby debris risk.
-Data flow: TLE from CelesTrak → SGP4 via satellite.js → client-side propagation.
+Data flow: TLE from internal API (`/api/satellites/{id}`, local DB → CelesTrak fallback) → SGP4 via satellite.js → client-side propagation. No direct browser → CelesTrak calls.
 
 3D representation:
 - Tracked satellite: `THREE.Sprite` with canvas-drawn billboard (solar panel silhouette + glow, per-satellite color). `createSatelliteTexture(colorHex)` draws on a 64×64 canvas, returns a `THREE.CanvasTexture`. Sprite always faces camera (billboard behavior built into SpriteMaterial). Scale 0.12 scene units.
@@ -599,11 +608,17 @@ Runs on every response. Sets:
 register, login (returns bearer token), logout, me (get/update), password change, forgot-password, reset-password
 
 ### SatelliteController
-- `show($noradId)` — fetch TLE from CelesTrak, return name + TLE lines
-- `orbit($noradId)` — return TLE lines for client-side propagation
+- `show($noradId)` — check local DB (Satellite + TleRecord); fallback to CelesTrak only if missing/stale (>6h); caches result on fallback. Response: `{success, data: {norad_id, name, tle_line1, tle_line2, source, fetched_at}}`
+- `orbit($noradId)` — same local-first logic; returns just `{norad_id, tle_line1, tle_line2}`
+
+### SatelliteSearchController
+- `GET /api/satellites/search?q=` — searches local `satellites` table by NORAD ID or name (LIKE). No live CelesTrak call. Returns `{success, data: [{norad_id, name}]}`. Catalog must be populated via `satellites:sync`.
+
+### CatalogController
+- `GET /api/catalog` — public, no auth, no rate limit. Returns all satellites with current TLE: `{success, data: {satellites: [{name, type, line1, line2}], count, synced_at}}`. `norad_id` not returned (frontend extracts from line1[2:7]). Cache-Control: max-age=3600, ETag on every response (md5 of max fetched_at). 304 returned when If-None-Match matches. Supports `?types=satellite,debris,rocket` filter (unknown tokens → no rows). Returns empty array when catalog not synced.
 
 ### ConjunctionController
-- `index($noradId)` — returns 9 simulated conjunction objects (Phase 2: real Space-Track CDM)
+- `index($noradId)` — queries `conjunction_events` for real CDM data first (scope: active() ±24h past to +7d, forObject(noradId)); falls back to simulated when no CDM data. Response `source` field: 'space_track_cdm' | 'simulated'. Frontend badge renders honestly based on source.
 
 ### ApiKeyController
 - `index()` — list keys with today's usage
@@ -693,8 +708,8 @@ VITE_API_URL_STAGING
 
 | Source | Data | Auth | Refresh |
 |---|---|---|---|
-| CelesTrak | TLE data | None | Every 6h (planned scheduler) |
-| Space-Track | Full catalog + CDM conjunction messages | Free account | Daily (Phase 2) |
+| CelesTrak | TLE data | None | Every 6h via `satellites:sync` |
+| Space-Track | CDM conjunction messages (CDM_PUBLIC) | Free account (SPACE_TRACK_USER/PASS in .env) | Every 6h via `conjunctions:sync` |
 
 **Key insight:** Don't proxy — cache. Fetch once on a schedule, serve from MySQL.
 
@@ -827,30 +842,51 @@ TLE groups:
 - [x] AlertController — standardized response envelope ($this->success() for all cases including empty watched sats)
 - [x] AlertTest.php — 19 tests: auth guards (401/403/200), empty states (no sats, sats with no alerts), retrieval (fields, risk_level derivation, TCA sort), scoping (unmonitored sats, past TCA, distant TCA, cross-user isolation, multi-sat), factory state tests
 - [x] ConjunctionAlerts search picker: LOCAL_CATALOG (20 satellites, instant), deferred CelesTrak remote search (350ms debounce, merge), keyboard nav (↑↓/Enter/Esc), clear button, spinner, two-step unwatch confirm, tle_fresh display removed
+- [x] Local satellite catalog: `satellites` + `tle_records` tables (migrations 2026_04_19_000000 + _000001)
+- [x] Satellite + TleRecord models with HasFactory; SatelliteFactory (iss/debris/forNorad states), TleRecordFactory (fresh/stale states)
+- [x] `php artisan satellites:sync` command — fetches 7 CelesTrak groups (stations, active, 3 debris fields, 2019-006, rocket-bodies), upserts satellites, rotates TLE records (is_current flag), idempotent, --dry-run support, scheduled every 6h
+- [x] SatelliteSearchController rewritten — local DB only, no live CelesTrak, NORAD ID + name (LIKE) search, exact prefix scored first
+- [x] SatelliteController::show/orbit — local DB first (TleRecord with is_current=true + <6h), CelesTrak fallback + auto-cache on miss. Response wrapped in standard {success, data} envelope (was bare JSON before)
+- [x] WatchedSatelliteController::store — name resolution prefers local Satellite catalog; CelesTrak only if satellite not in catalog
+- [x] SatelliteTracker.jsx — all 3 direct browser→CelesTrak fetches removed: initial auto-load, search, fetchSecondaryTle all route through /api/satellites/{id} or /api/satellites/search; new loadAndTrack() helper; quick-sat buttons call loadAndTrack() directly
+- [x] SatelliteCatalogTest.php — 22 tests: search, show/fallback/cache, sync, catalog endpoint (empty/data/type-map/no-tle/cache-header), admin dashboard catalog stats
+- [x] SatelliteTest.php updated — 3 tests adapted for new {success, data} envelope
+- [x] satellites:sync scheduled every 6h in console.php (alongside conjunctions:check)
+- [x] make setup runs satellites:sync automatically (with graceful failure warning); make sync-catalog standalone target added
+- [x] GET /api/catalog — public endpoint, no auth, no rate limit; returns all satellites+current TLE from DB; Cache-Control: max-age=3600; empty array when not synced. CatalogController. Frontend uses type map (rocket_body→rocket)
+- [x] DebrisMonitor.jsx — tries GET /api/catalog first; falls back to direct CelesTrak group fetches if catalog empty or unavailable; no behavior change when catalog empty; shows "LOCAL CATALOG" / "CELESTRAK DATA" source label in globe footer
+- [x] AdminDashboardController — catalog stats added (total, synced_at, by_type) to /api/admin/dashboard response
+- [x] AdminDashboard.jsx — CatalogStatus card shows object count, breakdown by type, last sync time, empty-state warning with make sync-catalog hint
+- [x] CatalogController: ETag (md5 of max fetched_at) on every response; 304 on If-None-Match match; ?types= filter (satellite/debris/rocket, unknown tokens → empty); norad_id removed from payload (in line1[2:7])
+- [x] SatelliteCatalogTest.php — 29 tests total (ETag, 304, types filter, unknown type, norad_id absent)
+- [x] Real conjunction data pipeline: `conjunction_events` table (CDM ingest) + `SpaceTrackClient` service (session-cookie auth + CDM_PUBLIC fetch)
+- [x] `conjunctions:sync` command — Space-Track CDM_PUBLIC ingest: login → fetch → upsert by cdm_id → generate conjunction_alerts for watched sats → notify users
+- [x] `conjunction_alerts` augmented: `source` (sgp4/space_track_cdm) + `conjunction_event_id` nullable FK; `conjunctions:check` now tags alerts with source='sgp4'
+- [x] `CheckConjunctionsCommand` updated: prefers local Satellite+TleRecord catalog for TLE; CelesTrak live fetch only as fallback for satellites not in local catalog
+- [x] `ConjunctionController` updated: real CDM data first (scope: active ±24h to +7d, forObject); simulated fallback only when no CDM events; source field honest in both cases
+- [x] `ConjunctionEvent` model: scopes active()/forObject(); riskScore() uses PC as primary signal (match thresholds), miss distance as floor; riskLevel() derived from riskScore()
+- [x] `ConjunctionEventFactory` — states: high/medium/low/past/forPrimary/forSecondary; mimics Space-Track CDM_PUBLIC shape
+- [x] `ConjunctionEventSeeder` — 6 demo CDM events for ISS/HST/GOES-16 pairs; generates conjunction_alerts for demo user; no credentials required
+- [x] `DatabaseSeeder` includes `ConjunctionEventSeeder`
+- [x] `config/services.php` — space_track.user/pass from SPACE_TRACK_USER/SPACE_TRACK_PASS env vars
+- [x] `console.php` — `conjunctions:sync` scheduled every 6h (alongside `conjunctions:check` as SGP4 fallback)
+- [x] Makefile: `sync-conjunctions`, `seed-conjunctions` targets added
+- [x] `ConjunctionSyncTest.php` — 22 tests: no-creds exit, dry-run, CDM upsert/idempotency/multi-record/probability/emergency flag, graceful skip on malformed records, alert generation (sat1 watched/sat2 watched/unwatched/no-duplicate/source), controller CDM path (real data/simulated fallback/fields/risk levels/past events/secondary perspective), model helpers (riskScore high/low, riskLevel match)
+- [x] SatelliteTracker.jsx — badge already renders "LIVE CDM DATA" when source='space_track_cdm' (was pre-wired from Phase 1); no changes needed
 
 ---
 
 ## What's Next (priority order)
 
-1. **TLE sync command** — `php artisan tle:sync`
-   - Fetch all TLE groups from CelesTrak, store in `satellites` + `tle_records` tables
-   - Laravel Scheduler every 6 hours + cron in Docker
+1. **Space-Track CDM wiring** — set `SPACE_TRACK_USER` / `SPACE_TRACK_PASS` in `.env` and run `make sync-conjunctions` to see real CDM data in the Tracker. The full pipeline is in place; credentials are all that's needed for live data.
 
-2. **Satellites + TleRecord migrations**
-   - `satellites`: norad_id, name, type, country, launch_date
-   - `tle_records`: satellite_id, line1, line2, epoch, fetched_at
+2. **UX polish** — loading states, source attribution improvements, tracker conjunction panel enhancements.
 
-3. **Wire frontend to backend API**
-   - Replace direct CelesTrak fetches in DebrisMonitor.jsx with `/api/satellites`
-   - Pass API key from `VITE_API_KEY` env var
+3. **Webhooks** — `webhooks` table, queue-based delivery with retry.
 
-4. **Real conjunction data** — Space-Track CDM integration
+4. **Stripe billing** — `composer require laravel/cashier`, swap BillingController mock blocks for Cashier calls.
 
-5. **Webhooks** — `webhooks` table, queue-based delivery with retry
-
-5. **Stripe billing** — `composer require laravel/cashier`, swap BillingController mock blocks for Cashier calls
-
-6. **Add-on products** — when first add-on ships, migrate `users.addons` JSON into a proper `user_addons` table (the JSON column is the bridge)
+5. **Add-on products** — when first add-on ships, migrate `users.addons` JSON into a proper `user_addons` table.
 
 ---
 
