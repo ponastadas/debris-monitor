@@ -173,6 +173,20 @@ class SatelliteSyncCommand extends Command
      */
     private function persistBatch(array $parsed, ?string $objectType, Carbon $now): array
     {
+        // Deduplicate by norad_id within the batch — a CelesTrak group file can
+        // occasionally contain the same satellite twice (e.g. active group overlaps
+        // with stations). MySQL's ON DUPLICATE KEY UPDATE rejects two rows with the
+        // same unique key in a single INSERT statement.
+        $seen   = [];
+        $unique = [];
+        foreach ($parsed as $p) {
+            if (! isset($seen[$p['norad_id']])) {
+                $seen[$p['norad_id']] = true;
+                $unique[]             = $p;
+            }
+        }
+        $parsed = $unique;
+
         // Step 1: Upsert satellites (norad_id is the unique key)
         $satelliteRows = array_map(fn ($p) => [
             'norad_id'       => $p['norad_id'],
