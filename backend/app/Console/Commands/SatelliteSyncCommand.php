@@ -23,32 +23,9 @@ class SatelliteSyncCommand extends Command
      * Add groups here when the catalog needs expanding.
      */
     private const DEFAULT_GROUPS = [
-        // Space stations — highest priority, always sync first
-        'stations',
-        // Active satellite categories — replaces the restricted GROUP=active endpoint
-        'weather',        // Weather satellites (MetOp, FengYun, etc.)
-        'noaa',           // NOAA POES / TIROS
-        'goes',           // GOES geostationary imagers
-        'resource',       // Earth-observation (Terra, Aqua, Landsat, Sentinel, etc.)
-        'sarsat',         // COSPAS-SARSAT search-and-rescue
-        'dmc',            // Disaster Monitoring Constellation
-        'tdrss',          // NASA Tracking and Data Relay Satellites
-        'argos',          // Argos data-collection
-        'planet',         // Planet Labs (Dove / SkySat)
-        'spire',          // Spire Global LEMUR
-        'oneweb',         // OneWeb broadband constellation
-        'starlink',       // SpaceX Starlink
-        'iridium-NEXT',   // Iridium Next constellation
-        'geo',            // Geostationary catalog
-        'tle-new',        // Recently launched objects
-        // GNSS constellations
-        'gps-ops',        // GPS operational satellites
-        'glo-ops',        // GLONASS operational satellites
-        'galileo',        // Galileo navigation constellation
-        'beidou',         // BeiDou navigation constellation
-        'sbas',           // Satellite-based augmentation systems
-        'amateur',        // Amateur radio satellites
-        // Debris fields
+        // Full active catalog — broadest coverage (~15 K satellites, rate-limited to once per 2h by CelesTrak)
+        'active',
+        // Debris fields — must come after 'active' so object_type is correctly set to 'debris'
         'fengyun-1c-debris',  // 2007 ASAT test (Fengyun-1C)
         'cosmos-2251-debris', // 2009 Cosmos 2251 collision
         'iridium-33-debris',  // 2009 Iridium 33 collision
@@ -57,28 +34,7 @@ class SatelliteSyncCommand extends Command
     private const CELESTRAK_URL = 'https://celestrak.org/NORAD/elements/gp.php';
 
     private const OBJECT_TYPE_MAP = [
-        'stations'           => 'satellite',
-        'weather'            => 'satellite',
-        'noaa'               => 'satellite',
-        'goes'               => 'satellite',
-        'resource'           => 'satellite',
-        'sarsat'             => 'satellite',
-        'dmc'                => 'satellite',
-        'tdrss'              => 'satellite',
-        'argos'              => 'satellite',
-        'planet'             => 'satellite',
-        'spire'              => 'satellite',
-        'oneweb'             => 'satellite',
-        'starlink'           => 'satellite',
-        'iridium-NEXT'       => 'satellite',
-        'geo'                => 'satellite',
-        'tle-new'            => 'satellite',
-        'gps-ops'            => 'satellite',
-        'glo-ops'            => 'satellite',
-        'galileo'            => 'satellite',
-        'beidou'             => 'satellite',
-        'sbas'               => 'satellite',
-        'amateur'            => 'satellite',
+        'active'             => 'satellite',
         'fengyun-1c-debris'  => 'debris',
         'cosmos-2251-debris' => 'debris',
         'iridium-33-debris'  => 'debris',
@@ -154,7 +110,12 @@ class SatelliteSyncCommand extends Command
         }
 
         if (! $response->ok()) {
-            $this->warn("  HTTP {$response->status()}");
+            $body = trim($response->body());
+            if ($response->status() === 403 && str_contains($body, 'not updated since your last')) {
+                $this->warn("  Rate-limited by CelesTrak (data unchanged since last download — retry in 2h)");
+            } else {
+                $this->warn("  HTTP {$response->status()}");
+            }
             return null;
         }
 
