@@ -22,7 +22,7 @@ setup:
 	@echo "Waiting for DB..."
 	@sleep 8
 	docker compose -f docker-compose.local.yml build backend
-	docker compose -f docker-compose.local.yml run --rm backend php artisan key:generate
+	@python3 -c "import re,base64,os; p='backend/.env'; c=open(p).read(); k='base64:'+base64.b64encode(os.urandom(32)).decode(); open(p,'w').write(re.sub(r'^APP_KEY=.*','APP_KEY='+k,c,flags=re.MULTILINE)); print('APP_KEY set.')"
 	docker compose -f docker-compose.local.yml run --rm backend php artisan migrate --seed
 	@echo "Syncing satellite catalog (fetches ~10k objects from CelesTrak — takes ~30s)..."
 	docker compose -f docker-compose.local.yml run --rm backend php artisan satellites:sync || echo "⚠️  Catalog sync failed. Run: make sync-catalog"
