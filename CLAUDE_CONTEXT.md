@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Last updated: 2026-04-19 (session 24 — Real conjunction data pipeline: Space-Track CDM ingestion, conjunction_events table, conjunctions:sync command, ConjunctionController prefers real CDM data). Use this to onboard Claude Code in new sessions.
+> Last updated: 2026-04-19 (session 25 — UX honesty pass: AlertController returns source+meta, per-alert source badges in Alerts UI, data credibility header, Tracker footer updated to "SGP4 (TLE-based) · Space-Track CDM", PageSeeder adds How It Works page, Footer links to /pages/how-it-works). Use this to onboard Claude Code in new sessions.
 
 ---
 

@@ -115,6 +115,7 @@ it('response includes all required fields', function () {
         'probability',
         'risk_score',
         'risk_level',
+        'source',
     ]);
 });
 
@@ -223,6 +224,36 @@ it('returns alerts for all of the users watched satellites', function () {
 
     $noradIds = collect($data)->pluck('primary_norad_id')->sort()->values()->all();
     expect($noradIds)->toBe(['20580', '25544']);
+});
+
+// ── Meta / data credibility ───────────────────────────────────────────────────
+
+it('response includes meta with source when alerts exist', function () {
+    [$user, $token] = alertUser();
+    watchedSat($user, '25544');
+    upcomingAlert('25544', ['source' => 'space_track_cdm']);
+
+    $res = $this->withToken($token)->getJson('/api/alerts')->assertOk();
+
+    expect($res->json('meta'))->toHaveKeys(['source', 'last_updated', 'coverage'])
+        ->and($res->json('meta.source'))->toBe('space_track_cdm');
+});
+
+it('meta source is sgp4 when all alerts are sgp4', function () {
+    [$user, $token] = alertUser();
+    watchedSat($user, '25544');
+    upcomingAlert('25544', ['source' => 'sgp4']);
+
+    expect($this->withToken($token)->getJson('/api/alerts')->json('meta.source'))->toBe('sgp4');
+});
+
+it('meta source is space_track_cdm when any alert is CDM', function () {
+    [$user, $token] = alertUser();
+    watchedSat($user, '25544');
+    upcomingAlert('25544', ['source' => 'sgp4']);
+    upcomingAlert('25544', ['source' => 'space_track_cdm']);
+
+    expect($this->withToken($token)->getJson('/api/alerts')->json('meta.source'))->toBe('space_track_cdm');
 });
 
 // ── Factory state tests ───────────────────────────────────────────────────────

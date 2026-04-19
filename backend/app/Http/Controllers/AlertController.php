@@ -35,24 +35,37 @@ class AlertController extends Controller
             return $this->success([]);
         }
 
-        $alerts = ConjunctionAlert::upcoming()
+        $rows = ConjunctionAlert::upcoming()
             ->whereIn('primary_norad_id', $noradIds)
             ->orderBy('tca')
-            ->get()
-            ->map(fn ($a) => [
-                'id'                 => $a->id,
-                'primary_norad_id'   => $a->primary_norad_id,
-                'primary_name'       => $a->primary_name,
-                'secondary_norad_id' => $a->secondary_norad_id,
-                'secondary_name'     => $a->secondary_name,
-                'tca'                => $a->tca->toIso8601String(),
-                'hours_until_tca'    => round($a->hoursUntilTca(), 1),
-                'miss_distance_km'   => $a->miss_distance_km,
-                'probability'        => $a->probability,
-                'risk_score'         => $a->risk_score,
-                'risk_level'         => $a->riskLevel(),
-            ]);
+            ->get();
 
-        return $this->success($alerts);
+        $alerts = $rows->map(fn ($a) => [
+            'id'                 => $a->id,
+            'primary_norad_id'   => $a->primary_norad_id,
+            'primary_name'       => $a->primary_name,
+            'secondary_norad_id' => $a->secondary_norad_id,
+            'secondary_name'     => $a->secondary_name,
+            'tca'                => $a->tca->toIso8601String(),
+            'hours_until_tca'    => round($a->hoursUntilTca(), 1),
+            'miss_distance_km'   => $a->miss_distance_km,
+            'probability'        => $a->probability,
+            'risk_score'         => $a->risk_score,
+            'risk_level'         => $a->riskLevel(),
+            'source'             => $a->source ?? 'sgp4',
+        ]);
+
+        $hasCdm      = $rows->contains(fn ($a) => $a->source === 'space_track_cdm');
+        $lastUpdated = $rows->max('updated_at');
+
+        return response()->json([
+            'success' => true,
+            'meta'    => [
+                'source'       => $hasCdm ? 'space_track_cdm' : 'sgp4',
+                'last_updated' => $lastUpdated?->toIso8601String(),
+                'coverage'     => 'High-risk events · 5-day horizon',
+            ],
+            'data'    => $alerts,
+        ]);
     }
 }

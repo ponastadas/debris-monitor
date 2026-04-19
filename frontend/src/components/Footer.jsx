@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useCookieConsent } from '../contexts/CookieConsentContext';
 
 const LEGAL_LINKS = [
+  { to: '/pages/how-it-works',   label: 'How It Works' },
   { to: '/pages/privacy-policy', label: 'Privacy' },
   { to: '/pages/cookie-policy',  label: 'Cookies' },
   { to: '/pages/terms',          label: 'Terms' },

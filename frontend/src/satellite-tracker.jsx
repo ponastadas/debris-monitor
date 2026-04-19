@@ -1230,7 +1230,7 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
               </a>
             </>
           ) : (
-            'TLE SOURCE: LOCAL CATALOG (CELESTRAK SYNC) · CONJUNCTION DATA: DEBRIS.MONITOR API'
+            'ORBITAL MOTION: SGP4 (TLE-BASED) · CONJUNCTION DATA: SPACE-TRACK CDM'
           )}
         </div>
       </div>

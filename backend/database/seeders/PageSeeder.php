@@ -423,6 +423,125 @@ MD,
             ],
 
             [
+                'title'            => 'How It Works',
+                'slug'             => 'how-it-works',
+                'excerpt'          => 'The orbital mechanics, data pipelines, and limitations behind Debris Monitor.',
+                'meta_title'       => 'How It Works — Debris Monitor',
+                'meta_description' => 'How Debris Monitor uses TLE data, SGP4 propagation, and Space-Track CDM to compute satellite positions and conjunction risk.',
+                'status'           => 'published',
+                'published_at'     => $now,
+                'content'          => <<<'MD'
+# How It Works
+
+Debris Monitor combines publicly available orbital data with standard propagation algorithms to compute satellite positions and conjunction risk. This page explains the technical approach — and its limitations.
+
+---
+
+## Orbital Data: TLE Sets
+
+Every tracked object in Earth orbit is assigned a NORAD catalog number. Its orbit is described by a **Two-Line Element (TLE) set** — a compact, standardized format that encodes the object's orbital parameters at a given point in time (the *epoch*).
+
+TLE data is published by the US Space Surveillance Network and distributed through services like [CelesTrak](https://celestrak.org) and [Space-Track.org](https://space-track.org). We fetch and store TLE sets for active satellites, debris fields, and rocket bodies — roughly 20,000 objects in total.
+
+**Important:** TLE sets are snapshots. They degrade in accuracy as time passes from the epoch. We refresh TLE data daily to keep predictions current.
+
+---
+
+## Position Propagation: SGP4
+
+To compute where a satellite is *right now* from a TLE, we use the **SGP4** (Simplified General Perturbations 4) algorithm — the same model used by NORAD and most public tracking software.
+
+SGP4 models the key forces acting on a low-Earth orbit object:
+- Earth's gravitational field (including J2 oblateness)
+- Atmospheric drag
+- Solar radiation pressure (simplified)
+
+It does **not** model higher-order perturbations, precise atmospheric density, or maneuvers. For objects in LEO it is accurate to a few hundred meters over a few days. Accuracy degrades with:
+- TLE age (each day adds error)
+- Very low orbits (more atmospheric drag)
+- Objects that maneuver (active satellites, debris that has been nudged)
+
+All satellite positions displayed in the Tracker are SGP4-propagated from local TLE data.
+
+---
+
+## Conjunction Detection
+
+A *conjunction event* is a close approach between two objects — when their predicted separation falls below a threshold distance within a time window.
+
+We use two data sources for conjunctions:
+
+### Space-Track CDM (primary)
+[Space-Track.org](https://space-track.org) publishes **Conjunction Data Messages (CDM)** from the US Space Surveillance Network. These are operationally produced by professional analysts using high-fidelity tracking data and sophisticated covariance modeling. CDM events include:
+
+- **Time of Closest Approach (TCA)** — precise timestamp
+- **Miss distance** — predicted separation at TCA
+- **Collision probability (Pc)** — probability of collision at TCA, accounting for positional uncertainty
+
+When CDM data is available (requires Space-Track credentials), we display it with a **SPACE-TRACK CDM** label. This is the most reliable conjunction data we can show.
+
+### SGP4 Propagation (fallback)
+When CDM data is unavailable, we compute conjunctions locally: we propagate all tracked objects in our catalog using SGP4 and find pairs whose predicted positions come within 10 km of each other within a 5-day horizon. We sample at 5-minute steps.
+
+This approach is computationally coarser than professional screening. It can miss real conjunctions (due to TLE error and sampling resolution) and generate false positives (same reason). We label these results **SGP4 COMPUTED** and treat them as approximate risk indicators only.
+
+---
+
+## Risk Scoring
+
+We score each conjunction event on a 0–100 scale using two signals:
+
+**Collision probability (primary signal)**
+| Pc range | Score |
+|---|---|
+| ≥ 0.001 (1 in 1,000) | 90 |
+| ≥ 0.0001 (1 in 10,000) | 75 |
+| ≥ 0.00001 (1 in 100,000) | 55 |
+| ≥ 0.000001 (1 in 1,000,000) | 35 |
+| below | 15 |
+
+**Miss distance (floor)**
+`score = 100 × (1 − miss_km / 10)`, capped at 0.
+
+The final risk score is `max(pc_score, distance_score)`.
+
+**Risk levels:**
+- **HIGH** — score ≥ 70 (typically miss < 1 km or Pc ≥ 0.001)
+- **MEDIUM** — score ≥ 40
+- **LOW** — score < 40
+
+---
+
+## What We Do Not Show
+
+- Maneuver histories (we cannot know if a satellite has maneuvered after the TLE epoch)
+- Covariance data (TLE-based propagation does not provide formal uncertainty bounds)
+- High-fidelity long-range predictions (errors compound over days)
+- Classified objects (not in public catalogs)
+
+---
+
+## Data Freshness
+
+| Data | Source | Update frequency |
+|---|---|---|
+| TLE sets | CelesTrak | Daily via `satellites:sync` |
+| Conjunction events | Space-Track CDM | Every 6 hours |
+| SGP4 conjunctions | Local computation | Every 6 hours |
+
+Alerts are generated from the most recent data available. If CDM data was ingested in the last check, alerts are labeled Space-Track CDM. Otherwise they fall back to SGP4.
+
+---
+
+## Limitations and Disclaimer
+
+Debris Monitor is a **demonstration and research platform**. It is not certified for operational space safety decisions. Conjunction probability estimates are approximate. Do not use this data as the sole basis for satellite avoidance maneuvers or mission-critical decisions.
+
+For operational conjunction screening, consult your launch provider, operator's flight dynamics team, or the [Space-Track.org](https://space-track.org) platform directly.
+MD,
+            ],
+
+            [
                 'title'            => 'Contact',
                 'slug'             => 'contact',
                 'excerpt'          => 'Get in touch with the Debris Monitor team.',

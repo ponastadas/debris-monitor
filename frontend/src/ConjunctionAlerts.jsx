@@ -218,7 +218,9 @@ const STYLE = `
   @keyframes ca-spin { to { transform: translateY(-50%) rotate(360deg); } }
 `;
 
-const RISK_COLOR = { HIGH: "#ff3b30", MEDIUM: "#ff9500", LOW: "#30d158" };
+const RISK_COLOR  = { HIGH: "#ff3b30", MEDIUM: "#ff9500", LOW: "#30d158" };
+const SOURCE_LABEL = { space_track_cdm: "SPACE-TRACK CDM", sgp4: "SGP4 COMPUTED", simulated: "SIMULATED" };
+const SOURCE_COLOR = { space_track_cdm: "#30d158", sgp4: "rgba(0,212,255,0.6)", simulated: "#ff9500" };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -239,8 +241,11 @@ function formatTca(iso) {
 // ── AlertCard ─────────────────────────────────────────────────────────────────
 
 function AlertCard({ alert, onTrack }) {
-  const color   = RISK_COLOR[alert.risk_level] ?? "#8b949e";
-  const percent = alert.risk_score;
+  const color       = RISK_COLOR[alert.risk_level] ?? "#8b949e";
+  const percent     = alert.risk_score;
+  const src         = alert.source ?? "sgp4";
+  const srcLabel    = SOURCE_LABEL[src] ?? src.toUpperCase();
+  const srcColor    = SOURCE_COLOR[src] ?? "rgba(200,223,240,0.4)";
 
   return (
     <div style={{
@@ -257,12 +262,20 @@ function AlertCard({ alert, onTrack }) {
           <div style={{ color: "#c8dff0", fontSize: 11, fontWeight: 500 }}>{alert.primary_name}</div>
           <div style={{ color: "rgba(200,223,240,0.45)", fontSize: 9, marginTop: 2 }}>NORAD {alert.primary_norad_id}</div>
         </div>
-        <span style={{
-          background: `${color}18`, border: `1px solid ${color}55`, borderRadius: 3,
-          color, fontSize: 8, fontWeight: 700, letterSpacing: 1.5, padding: "3px 7px", flexShrink: 0,
-        }}>
-          {alert.risk_level}
-        </span>
+        <div style={{ display: "flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
+          <span style={{
+            background: `${srcColor}14`, border: `1px solid ${srcColor}44`, borderRadius: 3,
+            color: srcColor, fontSize: 7, letterSpacing: 1, padding: "2px 6px",
+          }}>
+            {srcLabel}
+          </span>
+          <span style={{
+            background: `${color}18`, border: `1px solid ${color}55`, borderRadius: 3,
+            color, fontSize: 8, fontWeight: 700, letterSpacing: 1.5, padding: "3px 7px",
+          }}>
+            {alert.risk_level}
+          </span>
+        </div>
       </div>
 
       <div style={{ color: "rgba(200,223,240,0.55)", fontSize: 9, marginBottom: 10 }}>
@@ -732,6 +745,7 @@ function WatchedSatRow({ sat, onUnwatch }) {
 
 export default function ConjunctionAlerts({ onTrack }) {
   const [alerts,  setAlerts]  = useState([]);
+  const [meta,    setMeta]    = useState(null);
   const [watched, setWatched] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
@@ -752,6 +766,7 @@ export default function ConjunctionAlerts({ onTrack }) {
         client.get("/watch"),
       ]);
       setAlerts(alertRes.data.data ?? alertRes.data ?? []);
+      setMeta(alertRes.data.meta ?? null);
       setWatched(watchRes.data.data ?? watchRes.data ?? []);
     } catch (err) {
       setError(err.message ?? "Could not reach the API.");
@@ -786,7 +801,7 @@ export default function ConjunctionAlerts({ onTrack }) {
           borderRight: "1px solid rgba(0,212,255,0.09)",
         }}>
           {/* Header row */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
             <div style={{ color: "#00d4ff", fontSize: 13, fontWeight: 600, letterSpacing: 2 }}>
               CONJUNCTION ALERTS
             </div>
@@ -808,6 +823,34 @@ export default function ConjunctionAlerts({ onTrack }) {
               {loading ? "…" : "REFRESH"}
             </button>
           </div>
+
+          {/* Data credibility bar */}
+          {meta && (
+            <div style={{
+              display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap",
+              marginBottom: 18, padding: "8px 12px",
+              background: "rgba(0,212,255,0.03)", border: "1px solid rgba(0,212,255,0.09)",
+              borderRadius: 4, fontSize: 8, letterSpacing: 0.8, lineHeight: 1.5,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ color: "rgba(0,212,255,0.4)" }}>SOURCE</span>
+                <span style={{
+                  color: SOURCE_COLOR[meta.source] ?? "rgba(200,223,240,0.6)",
+                  fontWeight: 600,
+                }}>
+                  {SOURCE_LABEL[meta.source] ?? meta.source?.toUpperCase() ?? "UNKNOWN"}
+                </span>
+              </div>
+              {meta.coverage && (
+                <div style={{ color: "rgba(200,223,240,0.35)" }}>{meta.coverage}</div>
+              )}
+              {meta.last_updated && (
+                <div style={{ color: "rgba(200,223,240,0.28)" }}>
+                  Updated {new Date(meta.last_updated).toUTCString().replace(" GMT", " UTC").replace(/:\d\d /, " ")}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Error */}
           {error && (
@@ -928,13 +971,13 @@ export default function ConjunctionAlerts({ onTrack }) {
           </div>
 
           {/* Data notes */}
-          <div style={{ marginTop: 16, color: "rgba(200,223,240,0.18)", fontSize: 8, lineHeight: 1.6 }}>
-            Checks run every 6 h via<br />
-            <code style={{ color: "rgba(0,212,255,0.35)" }}>conjunctions:check</code><br />
-            5-day horizon · 5-min steps<br />
-            <span style={{ color: "rgba(200,223,240,0.12)" }}>
+          <div style={{ marginTop: 16, color: "rgba(200,223,240,0.18)", fontSize: 8, lineHeight: 1.8 }}>
+            <div>Conjunction data: Space-Track CDM</div>
+            <div>Fallback: SGP4 propagation (TLE-based)</div>
+            <div>Updated every 6 hours · 5-day horizon</div>
+            <div style={{ marginTop: 6, color: "rgba(200,223,240,0.1)" }}>
               Search: local catalog + CelesTrak
-            </span>
+            </div>
           </div>
         </div>
       </div>
