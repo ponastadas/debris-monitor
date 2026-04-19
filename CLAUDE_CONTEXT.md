@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Last updated: 2026-04-19 (session 25/26 — search bugfix pass: /api/satellites/search moved outside HandlePublicRequest (was consuming guest quota); SatelliteSyncCommand chunked to fix MySQL 65535 placeholder limit; GROUP=active replaced with targeted CelesTrak groups (weather/goes/resource/etc.); alias lookup always runs and prepends result so "hubble"→HST even when DB has LEMUR-2-HUBBLE matches; LOCAL_CATALOG + Tracker QUICK_SATS NORAD IDs corrected (GOES-16=41866, Sentinel-1A=39634, ICESat-2=43613, etc.). Use this to onboard Claude Code in new sessions.
+> Last updated: 2026-04-19 (session 27 — search quality pass: SatelliteSearchController rewritten with 4-strategy search (standard LIKE → REGEXP_REPLACE strip-normalised LIKE → international designator LIKE → alias prepend); aliases reduced to hubble/hst→20580 and tiangong/tianhe/css→48274; SatelliteSyncCommand adds GNSS groups (gps-ops, glo-ops, galileo, beidou, sbas, amateur), now extracts+stores international_designator from TLE line1 (e.g. "1998-067A"); phpunit.xml DB env vars now have force="true" so tests no longer wipe MySQL catalog; catalog re-synced (~4,568 sats with designators). Use this to onboard Claude Code in new sessions.
 
 ---
 

@@ -41,6 +41,13 @@ class SatelliteSyncCommand extends Command
         'iridium-NEXT',   // Iridium Next constellation
         'geo',            // Geostationary catalog
         'tle-new',        // Recently launched objects
+        // GNSS constellations
+        'gps-ops',        // GPS operational satellites
+        'glo-ops',        // GLONASS operational satellites
+        'galileo',        // Galileo navigation constellation
+        'beidou',         // BeiDou navigation constellation
+        'sbas',           // Satellite-based augmentation systems
+        'amateur',        // Amateur radio satellites
         // Debris fields
         'fengyun-1c-debris',  // 2007 ASAT test (Fengyun-1C)
         'cosmos-2251-debris', // 2009 Cosmos 2251 collision
@@ -66,6 +73,12 @@ class SatelliteSyncCommand extends Command
         'iridium-NEXT'       => 'satellite',
         'geo'                => 'satellite',
         'tle-new'            => 'satellite',
+        'gps-ops'            => 'satellite',
+        'glo-ops'            => 'satellite',
+        'galileo'            => 'satellite',
+        'beidou'             => 'satellite',
+        'sbas'               => 'satellite',
+        'amateur'            => 'satellite',
         'fengyun-1c-debris'  => 'debris',
         'cosmos-2251-debris' => 'debris',
         'iridium-33-debris'  => 'debris',
@@ -184,10 +197,11 @@ class SatelliteSyncCommand extends Command
             }
 
             $results[] = [
-                'name'     => $name,
-                'norad_id' => $noradId,
-                'line1'    => $line1,
-                'line2'    => $line2,
+                'name'                    => $name,
+                'norad_id'                => $noradId,
+                'line1'                   => $line1,
+                'line2'                   => $line2,
+                'international_designator' => $this->parseDesignator($line1),
             ];
         }
 
@@ -220,21 +234,22 @@ class SatelliteSyncCommand extends Command
         // Chunked to stay under MySQL's 65,535 prepared-statement placeholder limit
         // (8 columns × 8,000 rows = 64,000 placeholders per batch).
         $satelliteRows = array_map(fn ($p) => [
-            'norad_id'       => $p['norad_id'],
-            'name'           => $p['name'],
-            'object_type'    => $objectType,
-            'is_active'      => $objectType !== 'debris' && $objectType !== 'rocket_body',
-            'catalog_source' => 'celestrak',
-            'last_seen_at'   => $now->toDateTimeString(),
-            'created_at'     => $now->toDateTimeString(),
-            'updated_at'     => $now->toDateTimeString(),
+            'norad_id'                => $p['norad_id'],
+            'name'                    => $p['name'],
+            'object_type'             => $objectType,
+            'international_designator' => $p['international_designator'] ?? null,
+            'is_active'               => $objectType !== 'debris' && $objectType !== 'rocket_body',
+            'catalog_source'          => 'celestrak',
+            'last_seen_at'            => $now->toDateTimeString(),
+            'created_at'              => $now->toDateTimeString(),
+            'updated_at'              => $now->toDateTimeString(),
         ], $parsed);
 
         foreach (array_chunk($satelliteRows, 8000) as $chunk) {
             DB::table('satellites')->upsert(
                 $chunk,
                 ['norad_id'],
-                ['name', 'object_type', 'is_active', 'catalog_source', 'last_seen_at', 'updated_at']
+                ['name', 'object_type', 'international_designator', 'is_active', 'catalog_source', 'last_seen_at', 'updated_at']
             );
         }
 
@@ -280,6 +295,38 @@ class SatelliteSyncCommand extends Command
         }
 
         return [count($parsed), count($tleRows)];
+    }
+
+    /**
+     * Parse international designator from TLE line 1 (columns 9–16, 0-indexed).
+     * Raw format: "98067A  " → normalised to "1998-067A".
+     * Returns null if the field is blank or unrecognisable.
+     */
+    private function parseDesignator(string $line1): ?string
+    {
+        $raw = trim(substr($line1, 9, 8)); // e.g. "98067A" or "24001A  "
+
+        if (! $raw || strlen($raw) < 5) {
+            return null;
+        }
+
+        // Columns 9-10: 2-digit launch year; 11-13: launch number; 14-16: piece
+        $year2  = substr($raw, 0, 2);
+        $launch = substr($raw, 2, 3);
+        $piece  = ltrim(substr($raw, 5), ' ') ?: null;
+
+        if (! ctype_digit($year2) || ! ctype_digit($launch)) {
+            return null;
+        }
+
+        $year4 = ((int) $year2 >= 57 ? 1900 : 2000) + (int) $year2;
+        $desig = "{$year4}-{$launch}";
+
+        if ($piece) {
+            $desig .= strtoupper($piece);
+        }
+
+        return $desig;
     }
 
     /**
