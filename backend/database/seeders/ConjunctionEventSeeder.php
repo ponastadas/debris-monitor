@@ -174,29 +174,29 @@ class ConjunctionEventSeeder extends Seeder
                     continue;
                 }
 
-                $alreadyExists = ConjunctionAlert::where('conjunction_event_id', $event->id)
-                    ->where('primary_norad_id', $noradId)
-                    ->exists();
+                $isPrimary       = $event->sat1_norad_id === $noradId;
+                $secondaryNorad  = $isPrimary ? $event->sat2_norad_id : $event->sat1_norad_id;
 
-                if ($alreadyExists) {
-                    continue;
-                }
-
-                $isPrimary = $event->sat1_norad_id === $noradId;
-
-                ConjunctionAlert::create([
-                    'primary_norad_id'     => $noradId,
-                    'primary_name'         => $isPrimary ? $event->sat1_name : $event->sat2_name,
-                    'secondary_norad_id'   => $isPrimary ? $event->sat2_norad_id : $event->sat1_norad_id,
-                    'secondary_name'       => $isPrimary ? $event->sat2_name : $event->sat1_name,
-                    'tca'                  => $event->tca,
-                    'miss_distance_km'     => $event->min_range_km,
-                    'probability'          => $event->probability,
-                    'risk_score'           => $event->riskScore(),
-                    'source'               => 'space_track_cdm',
-                    'conjunction_event_id' => $event->id,
-                    'notified_at'          => now(),
-                ]);
+                // Use updateOrCreate on the unique constraint so this seeder
+                // is idempotent even when AlertDemoSeeder has already created an
+                // alert for the same (primary, secondary, tca) triple.
+                ConjunctionAlert::updateOrCreate(
+                    [
+                        'primary_norad_id'   => $noradId,
+                        'secondary_norad_id' => $secondaryNorad,
+                        'tca'                => $event->tca,
+                    ],
+                    [
+                        'primary_name'         => $isPrimary ? $event->sat1_name : $event->sat2_name,
+                        'secondary_name'       => $isPrimary ? $event->sat2_name : $event->sat1_name,
+                        'miss_distance_km'     => $event->min_range_km,
+                        'probability'          => $event->probability,
+                        'risk_score'           => $event->riskScore(),
+                        'source'               => 'space_track_cdm',
+                        'conjunction_event_id' => $event->id,
+                        'notified_at'          => now(),
+                    ],
+                );
             }
         }
 
