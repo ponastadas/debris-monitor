@@ -124,8 +124,9 @@ it('returns 404 for unknown norad id from celestrak', function () {
     $this->getJson('/api/satellites/9999999')->assertNotFound();
 });
 
-it('uses stale local TLE when celestrak is unreachable', function () {
-    // Create a stale (>6h) local TLE
+it('serves stale local TLE even when celestrak is unreachable', function () {
+    // is_current=true records are always served regardless of age — the staleness
+    // check was removed so the Tracker never fails due to a cold CelesTrak call.
     $sat = Satellite::factory()->iss()->create();
     TleRecord::factory()->for($sat)->create([
         'fetched_at' => now()->subHours(8),
@@ -138,8 +139,9 @@ it('uses stale local TLE when celestrak is unreachable', function () {
         'celestrak.org/*' => Http::response('', 503),
     ]);
 
-    // Stale local TLE is skipped, fallback fails, returns 404
-    $this->getJson('/api/satellites/25544')->assertNotFound();
+    $this->getJson('/api/satellites/25544')
+        ->assertOk()
+        ->assertJsonPath('data.source', 'local');
 });
 
 // ── Satellites:sync command ───────────────────────────────────────────────────

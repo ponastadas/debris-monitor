@@ -149,15 +149,16 @@ Route::prefix('admin')->middleware(['auth:admin', 'admin'])->group(function () {
 // TODO: uncomment when Stripe is configured
 // Route::post('/stripe/webhook', '\Laravel\Cashier\Http\Controllers\WebhookController@handleWebhook');
 
+// Satellite catalog search — public, no auth, no quota.
+// UI helper for the satellite picker; must not count against guest analysis quota.
+Route::get('/satellites/search', SatelliteSearchController::class);
+
 // ── Satellite data (guest · Sanctum user · API key) ───────────────────────────
 // HandlePublicRequest accepts all three actor types.
 // Guests: 10 analyses/day. Registered users: unlimited web access. API keys: tier limits.
 Route::middleware(HandlePublicRequest::class)->group(function () {
 
     Route::prefix('satellites')->group(function () {
-        // Search must be declared before /{noradId} to avoid being captured by the wildcard.
-        Route::get('/search', SatelliteSearchController::class);
-
         Route::get('/{noradId}',       [SatelliteController::class, 'show'])->whereNumber('noradId');
         Route::get('/{noradId}/orbit', [SatelliteController::class, 'orbit'])->whereNumber('noradId');
     });

@@ -8,24 +8,24 @@ import client from "./api/client";
 const LOCAL_CATALOG = [
   { norad_id: "25544", name: "ISS (ZARYA)" },
   { norad_id: "20580", name: "HST" },
-  { norad_id: "43013", name: "GOES-16" },
-  { norad_id: "37849", name: "TIANGONG-1" },
-  { norad_id: "48274", name: "TIANHE (CSS)" },
-  { norad_id: "28654", name: "NOAA 18" },
-  { norad_id: "33591", name: "NOAA 19" },
-  { norad_id: "40069", name: "NOAA 20 (JPSS-1)" },
+  { norad_id: "41866", name: "GOES 16" },
+  { norad_id: "43226", name: "GOES 17" },
+  { norad_id: "51850", name: "GOES 18" },
+  { norad_id: "48274", name: "CSS (TIANHE)" },
+  { norad_id: "43013", name: "NOAA 20 (JPSS-1)" },
+  { norad_id: "54234", name: "NOAA 21 (JPSS-2)" },
   { norad_id: "39084", name: "LANDSAT 8" },
-  { norad_id: "45025", name: "LANDSAT 9" },
-  { norad_id: "27540", name: "AQUA" },
+  { norad_id: "49260", name: "LANDSAT 9" },
+  { norad_id: "27424", name: "AQUA" },
   { norad_id: "25994", name: "TERRA" },
-  { norad_id: "27386", name: "GPS BIIR-2 (PRN 13)" },
-  { norad_id: "38857", name: "SENTINEL-1A" },
+  { norad_id: "37849", name: "SUOMI NPP" },
+  { norad_id: "39634", name: "SENTINEL-1A" },
   { norad_id: "40697", name: "SENTINEL-2A" },
   { norad_id: "42063", name: "SENTINEL-2B" },
   { norad_id: "41335", name: "SENTINEL-3A" },
-  { norad_id: "43613", name: "SENTINEL-3B" },
-  { norad_id: "36516", name: "CRYOSAT-2" },
-  { norad_id: "44233", name: "ICESAT-2" },
+  { norad_id: "43437", name: "SENTINEL-3B" },
+  { norad_id: "43613", name: "ICESAT-2" },
+  { norad_id: "46984", name: "SENTINEL-6A" },
 ];
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -633,11 +633,11 @@ function SatelliteSearchPicker({ onWatched, watchedNoradIds }) {
       {/* Quick picks — most commonly added satellites */}
       <div style={{ display: "flex", gap: 5, marginTop: 9, flexWrap: "wrap" }}>
         {[
-          { norad_id: "25544", label: "ISS",        name: "ISS (ZARYA)" },
-          { norad_id: "20580", label: "Hubble",     name: "HST" },
-          { norad_id: "43013", label: "GOES-16",    name: "GOES-16" },
-          { norad_id: "37849", label: "Tiangong-1", name: "TIANGONG-1" },
-          { norad_id: "48274", label: "Tianhe",     name: "TIANHE (CSS)" },
+          { norad_id: "25544", label: "ISS",      name: "ISS (ZARYA)" },
+          { norad_id: "20580", label: "Hubble",   name: "HST" },
+          { norad_id: "41866", label: "GOES-16",  name: "GOES-16" },
+          { norad_id: "48274", label: "Tianhe",   name: "CSS (TIANHE)" },
+          { norad_id: "43013", label: "NOAA-20",  name: "NOAA 20 (JPSS-1)" },
         ].map(s => {
           const watched = watchedNoradIds.has(s.norad_id);
           const isAdd   = adding === s.norad_id;

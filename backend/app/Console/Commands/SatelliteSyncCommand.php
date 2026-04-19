@@ -23,20 +23,49 @@ class SatelliteSyncCommand extends Command
      * Add groups here when the catalog needs expanding.
      */
     private const DEFAULT_GROUPS = [
-        'stations',           // Space stations (ISS, Tiangong) — small, high-priority
-        'active',             // All ~6000 active satellites
-        'fengyun-1c-debris',  // 2007 ASAT test (Fengyun-1C) debris field
-        'cosmos-2251-debris', // 2009 Cosmos 2251 collision debris
-        'iridium-33-debris',  // 2009 Iridium 33 collision debris
-        '2019-006',           // 2019 ASAT debris (India ASAT test)
-        'rocket-bodies',      // Spent upper stages
+        // Space stations — highest priority, always sync first
+        'stations',
+        // Active satellite categories — replaces the restricted GROUP=active endpoint
+        'weather',        // Weather satellites (MetOp, FengYun, etc.)
+        'noaa',           // NOAA POES / TIROS
+        'goes',           // GOES geostationary imagers
+        'resource',       // Earth-observation (Terra, Aqua, Landsat, Sentinel, etc.)
+        'sarsat',         // COSPAS-SARSAT search-and-rescue
+        'dmc',            // Disaster Monitoring Constellation
+        'tdrss',          // NASA Tracking and Data Relay Satellites
+        'argos',          // Argos data-collection
+        'planet',         // Planet Labs (Dove / SkySat)
+        'spire',          // Spire Global LEMUR
+        'oneweb',         // OneWeb broadband constellation
+        'starlink',       // SpaceX Starlink
+        'iridium-NEXT',   // Iridium Next constellation
+        'geo',            // Geostationary catalog
+        'tle-new',        // Recently launched objects
+        // Debris fields
+        'fengyun-1c-debris',  // 2007 ASAT test (Fengyun-1C)
+        'cosmos-2251-debris', // 2009 Cosmos 2251 collision
+        'iridium-33-debris',  // 2009 Iridium 33 collision
     ];
 
     private const CELESTRAK_URL = 'https://celestrak.org/NORAD/elements/gp.php';
 
     private const OBJECT_TYPE_MAP = [
         'stations'           => 'satellite',
-        'active'             => 'satellite',
+        'weather'            => 'satellite',
+        'noaa'               => 'satellite',
+        'goes'               => 'satellite',
+        'resource'           => 'satellite',
+        'sarsat'             => 'satellite',
+        'dmc'                => 'satellite',
+        'tdrss'              => 'satellite',
+        'argos'              => 'satellite',
+        'planet'             => 'satellite',
+        'spire'              => 'satellite',
+        'oneweb'             => 'satellite',
+        'starlink'           => 'satellite',
+        'iridium-NEXT'       => 'satellite',
+        'geo'                => 'satellite',
+        'tle-new'            => 'satellite',
         'fengyun-1c-debris'  => 'debris',
         'cosmos-2251-debris' => 'debris',
         'iridium-33-debris'  => 'debris',
@@ -187,7 +216,9 @@ class SatelliteSyncCommand extends Command
         }
         $parsed = $unique;
 
-        // Step 1: Upsert satellites (norad_id is the unique key)
+        // Step 1: Upsert satellites (norad_id is the unique key).
+        // Chunked to stay under MySQL's 65,535 prepared-statement placeholder limit
+        // (8 columns × 8,000 rows = 64,000 placeholders per batch).
         $satelliteRows = array_map(fn ($p) => [
             'norad_id'       => $p['norad_id'],
             'name'           => $p['name'],
@@ -199,11 +230,13 @@ class SatelliteSyncCommand extends Command
             'updated_at'     => $now->toDateTimeString(),
         ], $parsed);
 
-        DB::table('satellites')->upsert(
-            $satelliteRows,
-            ['norad_id'],
-            ['name', 'object_type', 'is_active', 'catalog_source', 'last_seen_at', 'updated_at']
-        );
+        foreach (array_chunk($satelliteRows, 8000) as $chunk) {
+            DB::table('satellites')->upsert(
+                $chunk,
+                ['norad_id'],
+                ['name', 'object_type', 'is_active', 'catalog_source', 'last_seen_at', 'updated_at']
+            );
+        }
 
         // Step 2: Fetch satellite IDs we just upserted
         $noradIds    = array_column($parsed, 'norad_id');
@@ -241,8 +274,9 @@ class SatelliteSyncCommand extends Command
             ];
         }
 
-        if ($tleRows) {
-            DB::table('tle_records')->insert($tleRows);
+        // 9 columns × 7,000 rows = 63,000 placeholders — stays under MySQL's 65,535 limit
+        foreach (array_chunk($tleRows, 7000) as $chunk) {
+            DB::table('tle_records')->insert($chunk);
         }
 
         return [count($parsed), count($tleRows)];

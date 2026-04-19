@@ -30,8 +30,8 @@ class SatelliteSearchController extends Controller
         'goes 18'           => '51850',
         'landsat'           => '39084',  // Landsat 8 (most recent active)
         'terra'             => '25994',
-        'aqua'              => '27540',
-        'sentinel'          => '38857',  // Sentinel-1A
+        'aqua'              => '27424',
+        'sentinel'          => '39634',  // Sentinel-1A
         'envisat'           => '27386',
         'noaa-15'           => '25338',
         'noaa-18'           => '28654',
@@ -82,26 +82,35 @@ class SatelliteSearchController extends Controller
                 ->map(fn ($s) => ['norad_id' => $s->norad_id, 'name' => $s->name])
                 ->values();
 
-            // If DB name search returned nothing, check the common-name alias table.
-            // Many satellites have obscure TLE names (e.g. HST, CSS) that don't match
-            // the popular names users type (e.g. Hubble, Tiangong).
-            if ($results->isEmpty()) {
-                $lower   = strtolower($q);
-                $noradId = null;
+            // Always check the alias table for common popular names (e.g. "Hubble" → HST).
+            // The alias result is prepended so the intended satellite appears first, even
+            // when the DB also returns unrelated substring matches (e.g. LEMUR-2-HUBBLE-*).
+            $lower   = strtolower($q);
+            $aliasId = null;
 
-                foreach (self::ALIASES as $alias => $id) {
-                    if ($id !== null && str_starts_with($alias, $lower) || $lower === $alias) {
-                        $noradId = $id;
-                        break;
-                    }
+            foreach (self::ALIASES as $alias => $id) {
+                if ($id !== null && (str_starts_with($alias, $lower) || $lower === $alias)) {
+                    $aliasId = $id;
+                    break;
                 }
+            }
 
-                if ($noradId) {
-                    $aliasResult = Satellite::where('norad_id', $noradId)
+            if ($aliasId) {
+                $alreadyInResults = $results->contains('norad_id', $aliasId);
+
+                if (! $alreadyInResults) {
+                    $aliasRow = Satellite::where('norad_id', $aliasId)
                         ->get(['norad_id', 'name'])
                         ->map(fn ($s) => ['norad_id' => $s->norad_id, 'name' => $s->name])
                         ->values();
-                    $results = $aliasResult;
+
+                    // Prepend alias result and trim to MAX_RESULTS
+                    $results = $aliasRow->merge($results)->values()->slice(0, self::MAX_RESULTS)->values();
+                } else {
+                    // Alias satellite is already in results — move it to the top
+                    $top     = $results->filter(fn ($r) => $r['norad_id'] === $aliasId)->values();
+                    $rest    = $results->filter(fn ($r) => $r['norad_id'] !== $aliasId)->values();
+                    $results = $top->merge($rest)->values();
                 }
             }
         }

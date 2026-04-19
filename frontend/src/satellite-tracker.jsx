@@ -404,8 +404,8 @@ const STYLE = `
 const QUICK_SATS = [
   { id: "25544", label: "ISS" },
   { id: "20580", label: "Hubble" },
-  { id: "43013", label: "GOES-16" },
-  { id: "37849", label: "Tiangong" },
+  { id: "41866", label: "GOES-16" },
+  { id: "48274", label: "Tianhe" },
 ];
 
 function latLonAltToVec3(lat, lon, alt) {
