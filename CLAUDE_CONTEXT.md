@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Last updated: 2026-04-19 (session 25 — UX honesty pass: AlertController returns source+meta, per-alert source badges in Alerts UI, data credibility header, Tracker footer updated to "SGP4 (TLE-based) · Space-Track CDM", PageSeeder adds How It Works page, Footer links to /pages/how-it-works). Use this to onboard Claude Code in new sessions.
+> Last updated: 2026-04-19 (session 25 — UX honesty pass + 2 bug fixes: AlertController returns source+meta, per-alert source badges, data credibility header, Tracker footer updated, PageSeeder adds How It Works page, Footer links to /pages/how-it-works; fixed Tracker "Could not load satellite" by removing 6h TLE staleness check in SatelliteController; fixed search returning empty for colloquial names by adding ALIASES map in SatelliteSearchController; fixed APP_KEY corruption in Makefile by replacing artisan key:generate with Python one-liner). Use this to onboard Claude Code in new sessions.
 
 ---
 
