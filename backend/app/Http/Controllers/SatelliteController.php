@@ -55,10 +55,6 @@ class SatelliteController extends Controller
 
         $record = $satellite->currentTle;
 
-        if ($record->fetched_at->diffInHours(now()) > 6) {
-            return null;
-        }
-
         return [
             'name'       => $satellite->name,
             'line1'      => $record->line1,
