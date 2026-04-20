@@ -5,37 +5,36 @@ namespace App\Http\Controllers;
 use App\Models\Satellite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 class SatelliteSearchController extends Controller
 {
     private const MAX_RESULTS = 10;
+    private const CELESTRAK_URL = 'https://celestrak.org/NORAD/elements/gp.php';
 
     /**
      * Common-name → NORAD ID aliases for satellites whose TLE names have no
      * recognisable relation to the popular name a user would type.
-     * Keep this list minimal — strip-normalisation handles most "goes16"/"goes-16"
-     * style variations automatically.
+     * Keep minimal — strip-normalisation handles most separator variations.
      */
     private const ALIASES = [
-        'hubble' => '20580',  // HST — official name gives no hint
-        'hst'    => '20580',
-        'tiangong' => '48274', // CSS TIANHE — common tourist name vs. TLE name
+        'hubble'   => '20580',  // HST
+        'hst'      => '20580',
+        'tiangong' => '48274',  // CSS TIANHE
         'tianhe'   => '48274',
         'css'      => '48274',
     ];
 
     /**
-     * Search the local satellite catalog by NORAD ID or name.
+     * Search the satellite catalog by NORAD ID, name, or international designator.
      *
      * GET /api/satellites/search?q=ISS
-     * GET /api/satellites/search?q=goes16
-     * GET /api/satellites/search?q=sentinel-1a
-     * GET /api/satellites/search?q=1998-067A        (international designator)
-     * GET /api/satellites/search?q=25544            (NORAD ID)
+     * GET /api/satellites/search?q=horacio
+     * GET /api/satellites/search?q=1998-067A   (international designator)
+     * GET /api/satellites/search?q=25544       (NORAD ID)
      *
-     * Returns up to 10 matches: [{norad_id, name}].
-     * Served entirely from local DB — no live CelesTrak call.
-     * Run `php artisan satellites:sync` to populate the catalog.
+     * Local DB first; falls back to live CelesTrak queries when local returns
+     * nothing, then caches any found satellites for future lookups.
      */
     public function __invoke(Request $request): JsonResponse
     {
@@ -46,17 +45,24 @@ class SatelliteSearchController extends Controller
         }
 
         if (ctype_digit($q)) {
-            return $this->success($this->searchByNorad($q));
+            $results = $this->searchByNorad($q);
+            if (empty($results)) {
+                $results = $this->celestrakByNorad($q);
+            }
+            return $this->success($results);
         }
 
-        return $this->success($this->searchByText($q));
+        $results = $this->searchByText($q);
+
+        if (empty($results)) {
+            $results = $this->celestrakFallback($q);
+        }
+
+        return $this->success($results);
     }
 
-    // ── Search strategies ─────────────────────────────────────────────────────
+    // ── Local DB strategies ───────────────────────────────────────────────────
 
-    /**
-     * Numeric query: exact NORAD ID first, then prefix match.
-     */
     private function searchByNorad(string $q): array
     {
         return Satellite::where('norad_id', $q)
@@ -71,10 +77,10 @@ class SatelliteSearchController extends Controller
     /**
      * Text query: four strategies merged in priority order.
      *
-     * 1. Standard prefix/substring LIKE (fast, covers most cases)
-     * 2. Strip-normalised LIKE — "goes16" matches "GOES 16", "sentinel1a" matches "SENTINEL-1A"
-     * 3. International designator LIKE — "1998-067A", "98067A", "98-067A"
-     * 4. Alias prepend — "hubble" → HST (common names with no TLE hint)
+     * 1. Standard prefix/substring LIKE
+     * 2. Strip-normalised LIKE — "goes16" matches "GOES 16"
+     * 3. International designator LIKE — "1998-067A" finds ISS
+     * 4. Alias prepend — "hubble" → HST
      */
     private function searchByText(string $q): array
     {
@@ -95,7 +101,7 @@ class SatelliteSearchController extends Controller
             }
         }
 
-        // Strategy 2: strip-normalised match — handles separators/spacing differences
+        // Strategy 2: strip-normalised match
         if (count($results) < self::MAX_RESULTS) {
             $stripped = $this->strip($q);
 
@@ -124,14 +130,11 @@ class SatelliteSearchController extends Controller
             }
         }
 
-        // Strategy 3: international designator search
+        // Strategy 3: international designator
         if (count($results) < self::MAX_RESULTS) {
-            $desigRows = $this->searchByDesignator($q, $seen);
-            foreach ($desigRows as $r) {
-                if (! isset($seen[$r['norad_id']])) {
-                    $seen[$r['norad_id']] = true;
-                    $results[]            = $r;
-                }
+            foreach ($this->searchByDesignator($q, $seen) as $r) {
+                $seen[$r['norad_id']] = true;
+                $results[]            = $r;
             }
         }
 
@@ -149,7 +152,6 @@ class SatelliteSearchController extends Controller
                     array_unshift($results, $aliasSat);
                 }
             } else {
-                // Already in results — move it to front
                 $aliasRow = array_filter($results, fn ($r) => $r['norad_id'] === $aliasId);
                 $rest     = array_filter($results, fn ($r) => $r['norad_id'] !== $aliasId);
                 $results  = array_values(array_merge(array_values($aliasRow), array_values($rest)));
@@ -160,15 +162,11 @@ class SatelliteSearchController extends Controller
     }
 
     /**
-     * Match international designator column against several normalised formats.
-     * Input "1998-067A", "98-067A", and "98067A" should all match NORAD 25544.
-     *
-     * @param  array<string,bool>  $skip  Already-seen norad_ids to exclude
+     * @param  array<string,bool>  $skip
      * @return list<array{norad_id: string, name: string}>
      */
     private function searchByDesignator(string $q, array $skip): array
     {
-        // Normalise input to bare alphanumeric (e.g. "1998-067A" → "1998067a")
         $norm = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $q));
 
         if (strlen($norm) < 4) {
@@ -193,21 +191,166 @@ class SatelliteSearchController extends Controller
         return $out;
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Live CelesTrak fallbacks (cache results to DB) ────────────────────────
 
     /**
-     * Strip all non-alphanumeric characters and lowercase — used for
-     * normalised comparison ("GOES-16" → "goes16", "Sentinel 1A" → "sentinel1a").
+     * Fallback for numeric NORAD ID queries: CATNR= endpoint is exact and fast.
+     *
+     * @return list<array{norad_id: string, name: string}>
      */
+    private function celestrakByNorad(string $noradId): array
+    {
+        $parsed = $this->celestrakFetch(['CATNR' => $noradId]);
+
+        if (empty($parsed)) {
+            return [];
+        }
+
+        $this->cacheSatellites($parsed);
+
+        return array_map(fn ($p) => ['norad_id' => $p['norad_id'], 'name' => $p['name']], $parsed);
+    }
+
+    /**
+     * Fallback for text/designator queries when local DB returns nothing.
+     *
+     * Tries in order:
+     *   1. NAME=<q>                              — exact as typed
+     *   2. NAME=<stripped-uppercase>             — "Quick-3" → "QUICK3"
+     *   3. INTDES=<q> (if looks like designator) — "2020-081J" → INTDES query
+     *
+     * @return list<array{norad_id: string, name: string}>
+     */
+    private function celestrakFallback(string $q): array
+    {
+        $candidates = [['NAME' => $q]];
+
+        $stripped = strtoupper($this->strip($q));
+        if ($stripped !== strtoupper($q) && $stripped !== '') {
+            $candidates[] = ['NAME' => $stripped];
+        }
+
+        // If the query looks like an international designator (e.g. "2020-081J")
+        // also try the INTDES= parameter which is more precise than NAME=.
+        if (preg_match('/^\d{4}-\d{3}[A-Z]*$/i', $q) || preg_match('/^\d{2}-\d{3}[A-Z]*$/i', $q)) {
+            $candidates[] = ['INTDES' => $q];
+        }
+
+        foreach ($candidates as $params) {
+            $parsed = $this->celestrakFetch($params);
+
+            if (! empty($parsed)) {
+                $this->cacheSatellites($parsed);
+
+                return array_slice(
+                    array_map(fn ($p) => ['norad_id' => $p['norad_id'], 'name' => $p['name']], $parsed),
+                    0,
+                    self::MAX_RESULTS
+                );
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Execute a single CelesTrak GP query and return parsed TLE records.
+     * Returns [] on any error or empty response.
+     *
+     * @param  array<string,string>  $params
+     * @return list<array{name: string, norad_id: string, line1: string, line2: string}>
+     */
+    private function celestrakFetch(array $params): array
+    {
+        try {
+            $response = Http::timeout(10)->get(self::CELESTRAK_URL, array_merge($params, ['FORMAT' => 'TLE']));
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if (! $response->ok()) {
+            return [];
+        }
+
+        $body = trim($response->body());
+
+        if (! $body || str_contains($body, 'No GP data')) {
+            return [];
+        }
+
+        return $this->parseTleLines($body);
+    }
+
+    /**
+     * Upsert satellites from a live fetch into the local catalog so subsequent
+     * searches are served from DB.
+     *
+     * @param list<array{name: string, norad_id: string, line1: string, line2: string}> $parsed
+     */
+    private function cacheSatellites(array $parsed): void
+    {
+        $now = now();
+
+        foreach ($parsed as $p) {
+            $satellite = Satellite::updateOrCreate(
+                ['norad_id' => $p['norad_id']],
+                ['name' => $p['name'], 'catalog_source' => 'celestrak', 'last_seen_at' => $now]
+            );
+
+            $satellite->tleRecords()->where('is_current', true)->update(['is_current' => false]);
+
+            $satellite->tleRecords()->create([
+                'line1'      => $p['line1'],
+                'line2'      => $p['line2'],
+                'source'     => 'celestrak',
+                'fetched_at' => $now,
+                'is_current' => true,
+            ]);
+        }
+    }
+
+    /**
+     * Parse raw TLE body (3-line sets) into structured records.
+     *
+     * @return list<array{name: string, norad_id: string, line1: string, line2: string}>
+     */
+    private function parseTleLines(string $body): array
+    {
+        $lines = array_values(array_filter(
+            array_map('trim', explode("\n", $body)),
+            fn ($l) => $l !== ''
+        ));
+
+        $results = [];
+
+        for ($i = 0; $i + 2 < count($lines); $i += 3) {
+            $name  = $lines[$i];
+            $line1 = $lines[$i + 1];
+            $line2 = $lines[$i + 2];
+
+            if (! str_starts_with($line1, '1 ') || ! str_starts_with($line2, '2 ')) {
+                continue;
+            }
+
+            $noradId = trim(substr($line1, 2, 5));
+
+            if (! $noradId || ! ctype_digit($noradId)) {
+                continue;
+            }
+
+            $results[] = ['name' => $name, 'norad_id' => $noradId, 'line1' => $line1, 'line2' => $line2];
+        }
+
+        return $results;
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
     private function strip(string $s): string
     {
         return preg_replace('/[^a-z0-9]/', '', strtolower($s));
     }
 
-    /**
-     * Return a NORAD ID if the query matches a known alias, null otherwise.
-     * Checks exact match and prefix match against the alias keys.
-     */
     private function resolveAlias(string $q): ?string
     {
         $lower = strtolower(trim($q));

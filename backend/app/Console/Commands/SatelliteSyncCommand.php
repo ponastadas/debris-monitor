@@ -23,18 +23,70 @@ class SatelliteSyncCommand extends Command
      * Add groups here when the catalog needs expanding.
      */
     private const DEFAULT_GROUPS = [
-        // Full active catalog — broadest coverage (~15 K satellites, rate-limited to once per 2h by CelesTrak)
+        // Full active catalog — broadest single-call coverage (~15K sats).
+        // Rate-limited to one download per 2h per IP by CelesTrak; when
+        // rate-limited it returns 403 and the group is skipped.  The
+        // granular groups below act as a fallback that fills the catalog
+        // even when 'active' is unavailable.
         'active',
-        // Debris fields — must come after 'active' so object_type is correctly set to 'debris'
-        'fengyun-1c-debris',  // 2007 ASAT test (Fengyun-1C)
-        'cosmos-2251-debris', // 2009 Cosmos 2251 collision
-        'iridium-33-debris',  // 2009 Iridium 33 collision
+        // Granular satellite categories — redundant with 'active' when that
+        // succeeds, but ensure ~4K+ objects are always synced regardless.
+        'stations',
+        'weather',
+        'noaa',
+        'goes',
+        'resource',
+        'sarsat',
+        'dmc',
+        'tdrss',
+        'argos',
+        'planet',
+        'spire',
+        'oneweb',
+        'starlink',
+        'iridium-NEXT',
+        'geo',
+        'last-30-days',
+        'gps-ops',
+        'glo-ops',
+        'galileo',
+        'beidou',
+        'sbas',
+        'amateur',
+        'cubesat',
+        // Debris fields — after satellite groups so object_type is set correctly
+        'fengyun-1c-debris',
+        'cosmos-2251-debris',
+        'iridium-33-debris',
     ];
 
     private const CELESTRAK_URL = 'https://celestrak.org/NORAD/elements/gp.php';
 
     private const OBJECT_TYPE_MAP = [
         'active'             => 'satellite',
+        'stations'           => 'satellite',
+        'weather'            => 'satellite',
+        'noaa'               => 'satellite',
+        'goes'               => 'satellite',
+        'resource'           => 'satellite',
+        'sarsat'             => 'satellite',
+        'dmc'                => 'satellite',
+        'tdrss'              => 'satellite',
+        'argos'              => 'satellite',
+        'planet'             => 'satellite',
+        'spire'              => 'satellite',
+        'oneweb'             => 'satellite',
+        'starlink'           => 'satellite',
+        'iridium-NEXT'       => 'satellite',
+        'geo'                => 'satellite',
+        'last-30-days'       => 'satellite',
+        'gps-ops'            => 'satellite',
+        'glo-ops'            => 'satellite',
+        'galileo'            => 'satellite',
+        'beidou'             => 'satellite',
+        'sbas'               => 'satellite',
+        'amateur'            => 'satellite',
+        'cubesat'            => 'satellite',
         'fengyun-1c-debris'  => 'debris',
         'cosmos-2251-debris' => 'debris',
         'iridium-33-debris'  => 'debris',

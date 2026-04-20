@@ -31,14 +31,14 @@ it('searches by norad_id from local catalog', function () {
          ->assertJsonPath('data.0.norad_id', '25544');
 });
 
-it('returns empty when catalog is empty', function () {
-    Http::fake(); // should never be called
+it('returns empty when catalog is empty and celestrak has no match', function () {
+    Http::fake([
+        'celestrak.org/*' => Http::response('No GP data found', 404),
+    ]);
 
     $this->getJson('/api/satellites/search?q=ISS')
          ->assertOk()
          ->assertJson(['success' => true, 'data' => []]);
-
-    Http::assertNothingSent();
 });
 
 it('limits results to 10 matches', function () {
@@ -51,7 +51,7 @@ it('limits results to 10 matches', function () {
          ->assertJsonCount(10, 'data');
 });
 
-it('does not call celestrak on search', function () {
+it('does not call celestrak on search when local result found', function () {
     Http::fake();
 
     Satellite::factory()->iss()->create();
@@ -59,6 +59,76 @@ it('does not call celestrak on search', function () {
     $this->getJson('/api/satellites/search?q=ISS')->assertOk();
 
     Http::assertNothingSent();
+});
+
+// ── Live CelesTrak fallback (satellites absent from local catalog) ─────────────
+
+$horacioTle =
+    "HORACIO                 \n".
+    "1 59098U 24043A   26109.52124740  .00002200  00000+0  18994-3 0  9994\n".
+    "2 59098  97.8434 240.9608 0009670 206.7984 153.2740 14.98275414115885";
+
+$r2Tle =
+    "R2                      \n".
+    "1 46913U 20081J   26109.56051816  .00002247  00000+0  17722-3 0  9991\n".
+    "2 46913  36.8986 212.3400 0009670 206.7984 153.2740 15.12345678901234";
+
+it('finds HORACIO by name via live CelesTrak fallback', function () use ($horacioTle) {
+    Http::fake(['celestrak.org/*' => Http::response($horacioTle, 200)]);
+
+    $this->getJson('/api/satellites/search?q=horacio')
+         ->assertOk()
+         ->assertJsonPath('data.0.norad_id', '59098')
+         ->assertJsonPath('data.0.name', 'HORACIO');
+});
+
+it('finds HORACIO by NORAD ID via live CelesTrak fallback', function () use ($horacioTle) {
+    Http::fake(['celestrak.org/*' => Http::response($horacioTle, 200)]);
+
+    $this->getJson('/api/satellites/search?q=59098')
+         ->assertOk()
+         ->assertJsonPath('data.0.norad_id', '59098');
+});
+
+it('finds HORACIO by international designator via live CelesTrak fallback', function () use ($horacioTle) {
+    Http::fake(['celestrak.org/*' => Http::response($horacioTle, 200)]);
+
+    $this->getJson('/api/satellites/search?q=2024-043A')
+         ->assertOk()
+         ->assertJsonPath('data.0.norad_id', '59098');
+});
+
+it('finds R2 by name via live CelesTrak fallback', function () use ($r2Tle) {
+    Http::fake(['celestrak.org/*' => Http::response($r2Tle, 200)]);
+
+    $this->getJson('/api/satellites/search?q=r2')
+         ->assertOk()
+         ->assertJsonPath('data.0.norad_id', '46913')
+         ->assertJsonPath('data.0.name', 'R2');
+});
+
+it('finds R2 by NORAD ID via live CelesTrak fallback', function () use ($r2Tle) {
+    Http::fake(['celestrak.org/*' => Http::response($r2Tle, 200)]);
+
+    $this->getJson('/api/satellites/search?q=46913')
+         ->assertOk()
+         ->assertJsonPath('data.0.norad_id', '46913');
+});
+
+it('finds R2 by international designator via live CelesTrak fallback', function () use ($r2Tle) {
+    Http::fake(['celestrak.org/*' => Http::response($r2Tle, 200)]);
+
+    $this->getJson('/api/satellites/search?q=2020-081J')
+         ->assertOk()
+         ->assertJsonPath('data.0.norad_id', '46913');
+});
+
+it('caches satellite to local DB after live CelesTrak fallback search', function () use ($horacioTle) {
+    Http::fake(['celestrak.org/*' => Http::response($horacioTle, 200)]);
+
+    $this->getJson('/api/satellites/search?q=59098')->assertOk();
+
+    expect(Satellite::where('norad_id', '59098')->exists())->toBeTrue();
 });
 
 // ── Satellite show endpoint ───────────────────────────────────────────────────
