@@ -41,10 +41,6 @@ class SatelliteController extends Controller
         ]);
     }
 
-    /**
-     * Return TLE from local DB if it exists and was fetched within 6 hours.
-     * Returns null when no usable local record is found.
-     */
     private function getLocalTle(string $noradId): ?array
     {
         $satellite = Satellite::with('currentTle')->where('norad_id', $noradId)->first();
@@ -64,11 +60,6 @@ class SatelliteController extends Controller
         ];
     }
 
-    /**
-     * Fetch TLE from CelesTrak, store it locally, and return it.
-     * This fallback runs only when local data is missing or stale.
-     * Stores the result so the same satellite is served locally on subsequent requests.
-     */
     private function fetchAndCacheTle(string $noradId): ?array
     {
         try {
@@ -98,22 +89,12 @@ class SatelliteController extends Controller
         $line2 = $lines[2];
         $now   = now();
 
-        // Upsert satellite record
         $satellite = Satellite::updateOrCreate(
             ['norad_id' => $noradId],
             ['name' => $name, 'catalog_source' => 'celestrak', 'last_seen_at' => $now]
         );
 
-        // Replace current TLE
-        $satellite->tleRecords()->where('is_current', true)->update(['is_current' => false]);
-        $satellite->tleRecords()->create([
-            'line1'      => $line1,
-            'line2'      => $line2,
-            'epoch_at'   => $this->parseEpoch($line1),
-            'source'     => 'celestrak',
-            'fetched_at' => $now,
-            'is_current' => true,
-        ]);
+        $satellite->upsertCurrentTle($line1, $line2);
 
         return [
             'name'       => $name,
@@ -122,24 +103,5 @@ class SatelliteController extends Controller
             'source'     => 'celestrak',
             'fetched_at' => $now->toIso8601String(),
         ];
-    }
-
-    private function parseEpoch(string $line1): ?string
-    {
-        try {
-            $epochStr = trim(substr($line1, 18, 14));
-            if (! $epochStr || strlen($epochStr) < 3) {
-                return null;
-            }
-            $year2   = (int) substr($epochStr, 0, 2);
-            $dayFrac = (float) substr($epochStr, 2);
-            $year    = $year2 >= 57 ? 1900 + $year2 : 2000 + $year2;
-
-            return now()->setTimezone('UTC')->setDate($year, 1, 1)->startOfDay()
-                ->addDays($dayFrac - 1)
-                ->toDateTimeString();
-        } catch (\Throwable) {
-            return null;
-        }
     }
 }

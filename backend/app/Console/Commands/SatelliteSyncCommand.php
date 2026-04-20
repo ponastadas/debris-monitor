@@ -140,7 +140,134 @@ class SatelliteSyncCommand extends Command
         $this->newLine();
         $this->info("Sync complete — {$totalSatellites} satellites, {$totalTleRecords} TLE records");
 
+        // Staleness sweep: refresh any satellite whose current TLE is older than
+        // 24h, regardless of which group it came from.  This keeps on-demand-cached
+        // satellites (e.g. HORACIO, R2) from rotting between full syncs.
+        $this->runStalenessSweep($isDryRun);
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Refresh stale per-satellite TLEs via individual CATNR= calls.
+     *
+     * Candidates: current TLE older than 24h, OR no current TLE at all.
+     * Ordered oldest-first so the most-stale are always prioritised.
+     * Capped at SATELLITE_SYNC_STALE_LIMIT (default 200) per run.
+     */
+    private function runStalenessSweep(bool $isDryRun): void
+    {
+        $limit     = (int) env('SATELLITE_SYNC_STALE_LIMIT', 200);
+        $threshold = now()->subHours(24);
+
+        // Left-join to tle_records so we can filter on fetched_at and order by it,
+        // including satellites that have no current TLE (fetched_at IS NULL).
+        $candidates = Satellite::select('satellites.*')
+            ->leftJoin('tle_records', function ($join) {
+                $join->on('tle_records.satellite_id', '=', 'satellites.id')
+                     ->where('tle_records.is_current', true);
+            })
+            ->where(function ($q) use ($threshold) {
+                $q->whereNull('tle_records.id')
+                  ->orWhere('tle_records.fetched_at', '<', $threshold);
+            })
+            ->orderByRaw('COALESCE(tle_records.fetched_at, 0) ASC')
+            ->limit($limit + 1)   // fetch one extra to detect the cap
+            ->get();
+
+        $total = $candidates->count();
+
+        if ($total === 0) {
+            $this->line('Staleness sweep: all TLEs are fresh — nothing to do');
+            return;
+        }
+
+        $capped = $total > $limit;
+        $candidates = $candidates->take($limit);
+
+        $this->newLine();
+        $this->line("Staleness sweep: <comment>{$candidates->count()}</comment> stale satellite(s)" . ($capped ? " (cap {$limit} hit — more remain)" : ''));
+        $capped && $this->warn("  Limit of {$limit} reached; remaining satellites will be swept on the next run");
+
+        if ($isDryRun) {
+            foreach ($candidates as $sat) {
+                $this->line("  [dry-run] would refresh NORAD {$sat->norad_id} ({$sat->name})");
+            }
+            return;
+        }
+
+        $refreshed = 0;
+
+        foreach ($candidates as $sat) {
+            $result = $this->fetchSingleTle($sat->norad_id);
+
+            if ($result === false) {
+                // 429 — CelesTrak is throttling individual CATNR calls; abort sweep.
+                $this->warn("  Staleness sweep stopped: CelesTrak returned 429 — will retry on next run");
+                break;
+            }
+
+            if ($result === null) {
+                $this->line("  ✗ Could not refresh NORAD {$sat->norad_id} — skipping");
+                usleep(100_000);
+                continue;
+            }
+
+            $sat->upsertCurrentTle($result['line1'], $result['line2']);
+            $refreshed++;
+
+            usleep(100_000); // 100ms between calls — respect CelesTrak rate limits
+        }
+
+        $this->line("Staleness sweep complete — {$refreshed} TLE(s) refreshed");
+    }
+
+    /**
+     * Fetch TLE for a single satellite by NORAD ID (CATNR= endpoint).
+     *
+     * Returns:
+     *   array  — parsed TLE on success
+     *   null   — satellite not found or non-throttle error (skip, continue)
+     *   false  — HTTP 429 received (stop sweep for this run)
+     *
+     * @return array{line1: string, line2: string}|null|false
+     */
+    private function fetchSingleTle(string $noradId): array|null|false
+    {
+        try {
+            $response = Http::timeout(10)->get(self::CELESTRAK_URL, [
+                'CATNR'  => $noradId,
+                'FORMAT' => 'TLE',
+            ]);
+        } catch (\Throwable $e) {
+            $this->warn("  HTTP error for NORAD {$noradId}: {$e->getMessage()}");
+            return null;
+        }
+
+        if ($response->status() === 429) {
+            return false;
+        }
+
+        if (! $response->ok()) {
+            return null;
+        }
+
+        $body = trim($response->body());
+
+        if (! $body || str_contains($body, 'No GP data')) {
+            return null;
+        }
+
+        $lines = array_values(array_filter(
+            array_map('trim', explode("\n", $body)),
+            fn ($l) => $l !== ''
+        ));
+
+        if (count($lines) < 3 || ! str_starts_with($lines[1], '1 ') || ! str_starts_with($lines[2], '2 ')) {
+            return null;
+        }
+
+        return ['line1' => $lines[1], 'line2' => $lines[2]];
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Satellite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 class SatelliteSearchController extends Controller
@@ -55,7 +56,17 @@ class SatelliteSearchController extends Controller
         $results = $this->searchByText($q);
 
         if (empty($results)) {
-            $results = $this->celestrakFallback($q);
+            // Check negative cache before hitting CelesTrak — a confirmed miss
+            // within the last 60s doesn't warrant another live call.
+            $missKey = 'search_miss:' . $this->strip($q);
+
+            if (! Cache::has($missKey)) {
+                $results = $this->celestrakFallback($q);
+
+                if (empty($results)) {
+                    Cache::put($missKey, true, 60);
+                }
+            }
         }
 
         return $this->success($results);
@@ -297,15 +308,7 @@ class SatelliteSearchController extends Controller
                 ['name' => $p['name'], 'catalog_source' => 'celestrak', 'last_seen_at' => $now]
             );
 
-            $satellite->tleRecords()->where('is_current', true)->update(['is_current' => false]);
-
-            $satellite->tleRecords()->create([
-                'line1'      => $p['line1'],
-                'line2'      => $p['line2'],
-                'source'     => 'celestrak',
-                'fetched_at' => $now,
-                'is_current' => true,
-            ]);
+            $satellite->upsertCurrentTle($p['line1'], $p['line2']);
         }
     }
 
