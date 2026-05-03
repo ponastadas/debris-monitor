@@ -58,6 +58,9 @@ class SatelliteSyncCommand extends Command
         'fengyun-1c-debris',
         'cosmos-2251-debris',
         'iridium-33-debris',
+        '2019-006',        // ASAT test debris field
+        // Rocket bodies — spent upper stages (~13K objects, essential for conjunction analysis)
+        'rocket-bodies',
     ];
 
     private const CELESTRAK_URL = 'https://celestrak.org/NORAD/elements/gp.php';
@@ -138,7 +141,11 @@ class SatelliteSyncCommand extends Command
         }
 
         $this->newLine();
-        $this->info("Sync complete — {$totalSatellites} satellites, {$totalTleRecords} TLE records");
+
+        // Report the true unique count from the DB — the per-group tallies above
+        // are inflated because many CelesTrak groups overlap (e.g. starlink ⊂ active).
+        $uniqueCount = DB::table('tle_records')->where('is_current', true)->count();
+        $this->info("Sync complete — {$uniqueCount} unique objects with current TLE ({$totalSatellites} records parsed across ".count($groups)." groups, {$totalTleRecords} TLE records inserted)");
 
         // Staleness sweep: refresh any satellite whose current TLE is older than
         // 24h, regardless of which group it came from.  This keeps on-demand-cached

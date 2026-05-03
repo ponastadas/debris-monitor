@@ -19,6 +19,7 @@ class CatalogController extends Controller
         'rocket_body' => 'rocket',
     ];
 
+    // 'unknown' is handled separately — it maps to NULL object_type, not a string value.
     private const REVERSE_TYPE_MAP = [
         'satellite' => 'satellite',
         'debris'    => 'debris',
@@ -62,30 +63,47 @@ class CatalogController extends Controller
             ->join('tle_records as t', function ($join) {
                 $join->on('t.satellite_id', '=', 's.id')->where('t.is_current', true);
             })
-            ->select('s.name', 's.object_type', 't.line1', 't.line2')
+            ->select('s.norad_id', 's.name', 's.object_type', 't.line1', 't.line2')
             ->orderBy('s.norad_id');
 
         // ── ?types= filter ────────────────────────────────────────────────────
         $typesParam = $request->query('types');
         if ($typesParam) {
-            $dbTypes = collect(explode(',', $typesParam))
-                ->map(fn ($t) => self::REVERSE_TYPE_MAP[trim($t)] ?? null)
+            $tokens = collect(explode(',', $typesParam))->map(fn ($t) => trim($t))->filter()->unique();
+
+            // 'unknown' tokens map to NULL object_type (not a string value), so they
+            // require a separate whereNull clause rather than being added to whereIn.
+            $includeUnknown = $tokens->contains('unknown');
+
+            $dbTypes = $tokens
+                ->reject(fn ($t) => $t === 'unknown')
+                ->map(fn ($t) => self::REVERSE_TYPE_MAP[$t] ?? null)
                 ->filter()
                 ->values()
                 ->all();
 
-            // Apply whereIn even when $dbTypes is empty — unknown tokens match nothing.
-            // Laravel generates WHERE 0 = 1 for empty arrays, returning no rows.
-            $query->whereIn('s.object_type', $dbTypes);
+            if ($includeUnknown && empty($dbTypes)) {
+                $query->whereNull('s.object_type');
+            } elseif ($includeUnknown) {
+                $query->where(function ($q) use ($dbTypes) {
+                    $q->whereIn('s.object_type', $dbTypes)->orWhereNull('s.object_type');
+                });
+            } elseif (! empty($dbTypes)) {
+                $query->whereIn('s.object_type', $dbTypes);
+            } else {
+                // All tokens unrecognized (no known type, no 'unknown') — return no rows.
+                $query->whereRaw('0 = 1');
+            }
         }
 
         $rows = $query->get();
 
         $satellites = $rows->map(fn ($r) => [
-            'name'  => $r->name,
-            'type'  => self::TYPE_MAP[$r->object_type] ?? 'unknown',
-            'line1' => $r->line1,
-            'line2' => $r->line2,
+            'norad_id' => $r->norad_id,
+            'name'     => $r->name,
+            'type'     => self::TYPE_MAP[$r->object_type] ?? 'unknown',
+            'line1'    => $r->line1,
+            'line2'    => $r->line2,
         ])->values();
 
         return $this->success([

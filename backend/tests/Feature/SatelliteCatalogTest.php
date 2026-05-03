@@ -419,13 +419,12 @@ it('catalog endpoint returns satellites with TLE data', function () {
          ->assertJsonPath('data.count', 2)
          ->assertJsonStructure(['data' => ['satellites', 'count', 'synced_at']]);
 
-    // norad_id is no longer returned — frontend extracts it from line1[2:7]
     $first = $res->json('data.satellites.0');
+    expect($first)->toHaveKey('norad_id');
     expect($first)->toHaveKey('name');
     expect($first)->toHaveKey('type');
     expect($first)->toHaveKey('line1');
     expect($first)->toHaveKey('line2');
-    expect($first)->not->toHaveKey('norad_id');
 });
 
 it('catalog endpoint maps rocket_body type to rocket for frontend', function () {
@@ -527,10 +526,71 @@ it('catalog endpoint ignores unknown type tokens gracefully', function () {
     $sat = Satellite::factory()->iss()->create();
     TleRecord::factory()->fresh()->for($sat)->create();
 
-    // 'bogus' maps to no known object_type — WHERE IN () → no rows returned
+    // 'bogus' maps to no known object_type — WHERE 0=1 → no rows returned
     $this->getJson('/api/catalog?types=bogus')
          ->assertOk()
          ->assertJsonPath('data.count', 0);
+});
+
+it('catalog endpoint with no filter returns all object types including rocket and unknown', function () {
+    $sat = Satellite::factory()->iss()->create();
+    TleRecord::factory()->fresh()->for($sat)->create();
+
+    $deb = Satellite::factory()->forNorad('29228', 'FENGYUN DEB', 'debris')->create();
+    TleRecord::factory()->fresh()->for($deb)->create();
+
+    $rocket = Satellite::factory()->forNorad('10001', 'ROCKET BODY', 'rocket_body')->create();
+    TleRecord::factory()->fresh()->for($rocket)->create();
+
+    $unknown = Satellite::factory()->forNorad('10002', 'MYSTERY OBJ', null)->create();
+    TleRecord::factory()->fresh()->for($unknown)->create();
+
+    $res = $this->getJson('/api/catalog')->assertOk();
+    expect($res->json('data.count'))->toBe(4);
+
+    $types = collect($res->json('data.satellites'))->pluck('type')->unique()->sort()->values()->all();
+    expect($types)->toContain('satellite');
+    expect($types)->toContain('debris');
+    expect($types)->toContain('rocket');
+    expect($types)->toContain('unknown');
+});
+
+it('catalog endpoint filters by rocket type', function () {
+    $rocket = Satellite::factory()->forNorad('10001', 'ROCKET BODY', 'rocket_body')->create();
+    TleRecord::factory()->fresh()->for($rocket)->create();
+
+    $sat = Satellite::factory()->iss()->create();
+    TleRecord::factory()->fresh()->for($sat)->create();
+
+    $res = $this->getJson('/api/catalog?types=rocket')->assertOk();
+    expect($res->json('data.count'))->toBe(1);
+
+    $types = collect($res->json('data.satellites'))->pluck('type')->unique()->values()->all();
+    expect($types)->toBe(['rocket']);
+});
+
+it('catalog endpoint filters by unknown type returns null-object_type rows', function () {
+    $unknown = Satellite::factory()->forNorad('10002', 'MYSTERY OBJ', null)->create();
+    TleRecord::factory()->fresh()->for($unknown)->create();
+
+    $sat = Satellite::factory()->iss()->create();
+    TleRecord::factory()->fresh()->for($sat)->create();
+
+    $res = $this->getJson('/api/catalog?types=unknown')->assertOk();
+    expect($res->json('data.count'))->toBe(1);
+
+    $types = collect($res->json('data.satellites'))->pluck('type')->unique()->values()->all();
+    expect($types)->toBe(['unknown']);
+});
+
+it('catalog response includes norad_id in each satellite entry', function () {
+    $sat = Satellite::factory()->iss()->create();
+    TleRecord::factory()->fresh()->for($sat)->create();
+
+    $res = $this->getJson('/api/catalog')->assertOk();
+
+    $first = $res->json('data.satellites.0');
+    expect($first['norad_id'])->toBe('25544');
 });
 
 // ── Admin dashboard catalog stats ────────────────────────────────────────────
@@ -542,11 +602,24 @@ it('admin dashboard includes catalog stats', function () {
     $sat = Satellite::factory()->iss()->create();
     TleRecord::factory()->fresh()->for($sat)->create();
 
+    $deb = Satellite::factory()->forNorad('29228', 'FENGYUN DEB', 'debris')->create();
+    TleRecord::factory()->fresh()->for($deb)->create();
+
+    $rocket = Satellite::factory()->forNorad('10001', 'ROCKET BODY', 'rocket_body')->create();
+    TleRecord::factory()->fresh()->for($rocket)->create();
+
     $r = $this->withToken($token)->getJson('/api/admin/dashboard')->assertOk();
 
-    expect($r->json('data.catalog.total'))->toBe(1);
+    expect($r->json('data.catalog.total'))->toBe(3);
     expect($r->json('data.catalog.synced_at'))->not->toBeNull();
-    expect($r->json('data.catalog.by_type'))->toBeArray();
+
+    // by_type uses frontend-normalized keys (satellite/debris/rocket/unknown — not raw DB values)
+    $byType = $r->json('data.catalog.by_type');
+    expect($byType)->toBeArray();
+    expect($byType['satellite'])->toBe(1);
+    expect($byType['debris'])->toBe(1);
+    expect($byType['rocket'])->toBe(1);
+    expect($byType)->not->toHaveKey('rocket_body'); // raw DB key must not appear
 });
 
 it('admin dashboard catalog stats are zero when catalog empty', function () {

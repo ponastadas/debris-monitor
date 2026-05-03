@@ -46,7 +46,7 @@ class SatelliteFactory extends Factory
         return $this->state(['object_type' => 'debris', 'is_active' => false]);
     }
 
-    public function forNorad(string $noradId, string $name, string $type = 'satellite'): static
+    public function forNorad(string $noradId, string $name, ?string $type = 'satellite'): static
     {
         return $this->state(['norad_id' => $noradId, 'name' => $name, 'object_type' => $type]);
     }
