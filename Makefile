@@ -45,10 +45,16 @@ seed-conjunctions:
 
 # ── Tests ─────────────────────────────────────────────────────
 test:
-	docker compose -f docker-compose.local.yml run --rm backend php artisan test
+	docker compose -f docker-compose.local.yml run --rm \
+		-e APP_KEY="base64:QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=" \
+		-e APP_ENV=testing \
+		backend sh -c "php artisan config:clear 2>/dev/null; php artisan test"
 
 test-filter:
-	docker compose -f docker-compose.local.yml run --rm backend php artisan test --filter=$(filter)
+	docker compose -f docker-compose.local.yml run --rm \
+		-e APP_KEY="base64:QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=" \
+		-e APP_ENV=testing \
+		backend sh -c "php artisan config:clear 2>/dev/null; php artisan test --filter=$(filter)"
 
 # ── Lint ──────────────────────────────────────────────────────
 lint:
