@@ -1,5 +1,5 @@
 # Debris Monitor — Project Context
-> Last updated: 2026-05-03 (session 29 — responsive nav + search performance: NavBar.jsx component replaces hardcoded absolute-positioned nav; hamburger menu on mobile ≤768px; dm-root/tracker-root changed from 100vh to 100% so views fill navbar-aware flex column; mobile stacked layout heights changed from vh to % for correct proportions; SatelliteSearchController CelesTrak fallback removed (local DB only); name_normalized + designator_normalized STORED generated columns added to satellites with indexes (replaces REGEXP_REPLACE per-row scan); 5-min result cache added to search; frontend AbortController + Map cache added to performSearch; debounce 400ms→300ms; 38 backend + 44 frontend tests all pass).
+> Last updated: 2026-05-03 (session 30 — admin public-endpoint access + catalog classification overhaul: HandlePublicRequest now falls through auth('sanctum') → auth('admin') so admin tokens work on satellite/conjunction endpoints; EntitlementService::forAdmin() returns enterprise-level entitlements; client.js sends dm_admin_token as Bearer + _isAdminToken flag suppresses 401 redirect on customer-only endpoints; satellites:sync fetches SATCAT CSV (celestrak.org/pub/satcat.csv) at start to build NORAD→type map (PAY→satellite, R/B→rocket_body, DEB→debris, UNK→null) — each parsed object gets SATCAT type overriding group-level fallback; CatalogController: norad_id added to response, ?types=unknown uses whereNull; AdminDashboardController by_type keys normalised (rocket_body→rocket); sync count now reports true unique DB count; GuestAccessTest + SatelliteCatalogTest + SatelliteSyncTest extended; vite.config.js worker:{format:'es'} fixes satellite.js WASM top-level-await build error; 266 backend + 44 frontend tests pass).
 
 ---
 
@@ -579,11 +579,14 @@ Watch-list UX:
 
 ### HandlePublicRequest (`app/Http/Middleware/HandlePublicRequest.php`)
 Used on `/api/satellites/*` and `/api/conjunctions/*`. Resolves actor in priority order:
-1. Bearer token → `auth('sanctum')->user()` → sets actor_type=user, unlimited access
+1. Bearer token → `auth('sanctum')->user()` (customer) → sets actor_type=user, unlimited access
+   - If sanctum rejects it → `auth('admin')->user()` (admin) → sets actor_type=admin, enterprise entitlements
 2. `X-API-Key` or `?api_key=` → validates key, checks daily_limit, logs to api_usage, adds rate limit headers
 3. No auth → reads `X-Guest-ID` header (or falls back to IP), checks/increments `guest_usage` table, adds `X-Guest-Requests-Remaining` header. Returns 429 `GUEST_LIMIT_REACHED` when limit hit.
 
 Sets request attributes: `actor_type`, `actor`, `entitlements`
+
+**Admin tokens on public endpoints:** sanctum guard is scoped to `users` provider — AdminAccount tokens produce 401 from sanctum; the fallback `auth('admin')` check catches them and grants enterprise-level access via `EntitlementService::forAdmin()`. `client.js` sets `_isAdminToken=true` flag on requests using `dm_admin_token` so the 401 response interceptor skips the redirect-to-login logic.
 
 ### EnsureIsAdmin
 Checks `auth('admin')->user()?->isActive()`. Applied AFTER `auth:admin` (which verifies the token). Blocks `is_active=false` admin accounts with 403. Admin routes use middleware stack: `['auth:admin', 'admin']`.
@@ -615,7 +618,7 @@ register, login (returns bearer token), logout, me (get/update), password change
 - `GET /api/satellites/search?q=` — searches local `satellites` table by NORAD ID or name (LIKE). No live CelesTrak call. Returns `{success, data: [{norad_id, name}]}`. Catalog must be populated via `satellites:sync`.
 
 ### CatalogController
-- `GET /api/catalog` — public, no auth, no rate limit. Returns all satellites with current TLE: `{success, data: {satellites: [{name, type, line1, line2}], count, synced_at}}`. `norad_id` not returned (frontend extracts from line1[2:7]). Cache-Control: max-age=3600, ETag on every response (md5 of max fetched_at). 304 returned when If-None-Match matches. Supports `?types=satellite,debris,rocket` filter (unknown tokens → no rows). Returns empty array when catalog not synced.
+- `GET /api/catalog` — public, no auth, no rate limit. Returns all satellites with current TLE: `{success, data: {satellites: [{norad_id, name, type, line1, line2}], count, synced_at}}`. Cache-Control: max-age=3600, ETag on every response (md5 of max fetched_at). 304 returned when If-None-Match matches. Supports `?types=satellite,debris,rocket,unknown` filter; `unknown` maps to `whereNull('s.object_type')` (not a string value in DB). Returns empty array when catalog not synced.
 
 ### ConjunctionController
 - `index($noradId)` — queries `conjunction_events` for real CDM data first (scope: active() ±24h past to +7d, forObject(noradId)); falls back to simulated when no CDM data. Response `source` field: 'space_track_cdm' | 'simulated'. Frontend badge renders honestly based on source.
@@ -708,21 +711,19 @@ VITE_API_URL_STAGING
 
 | Source | Data | Auth | Refresh |
 |---|---|---|---|
-| CelesTrak | TLE data | None | Every 6h via `satellites:sync` |
+| CelesTrak TLE groups | TLE data (gp.php?GROUP=) | None | Every 6h via `satellites:sync` |
+| CelesTrak SATCAT | Per-object type classification (satcat.csv) | None | Every sync run (fetched once per sync) |
 | Space-Track | CDM conjunction messages (CDM_PUBLIC) | Free account (SPACE_TRACK_USER/PASS in .env) | Every 6h via `conjunctions:sync` |
 
 **Key insight:** Don't proxy — cache. Fetch once on a schedule, serve from MySQL.
 
-TLE groups:
-- `GROUP=active` — all active satellites (~6k)
-- `GROUP=cosmos-2251-debris`, `iridium-33-debris`, `fengyun-1c-debris`, `2019-006` — debris fields
-- `GROUP=rocket-bodies` — spent stages
+TLE groups (DEFAULT_GROUPS): `active`, `stations`, `weather`, `noaa`, `goes`, `resource`, `sarsat`, `dmc`, `tdrss`, `argos`, `planet`, `spire`, `oneweb`, `starlink`, `iridium-NEXT`, `geo`, `last-30-days`, `gps-ops`, `glo-ops`, `galileo`, `beidou`, `sbas`, `amateur`, `cubesat`, `fengyun-1c-debris`, `cosmos-2251-debris`, `iridium-33-debris`, `2019-006`, `rocket-bodies`
+
+**Type classification**: SATCAT CSV provides authoritative per-object type (PAY→satellite, R/B→rocket_body, DEB→debris, UNK→null). Group-level OBJECT_TYPE_MAP is the fallback when SATCAT is unavailable or the object is absent from SATCAT. This correctly classifies ~2,400+ active rocket bodies that arrive via `GROUP=active` but are R/B in SATCAT.
 
 ---
 
 ## Known Issues
-
-- **satellite.js WASM build error**: top-level await incompatible with iife format — pre-existing issue, not introduced by recent work. Frontend build via CI may need `vite.config.js` adjustments.
 
 - **GuestAccessTest network flakiness**: `it does not count the 10th request` fails when CelesTrak is unreachable or slow during test run (the guest-boundary test increments usage via a real `/api/conjunctions/25544` call). Pre-existing; not related to any feature work.
 
@@ -857,8 +858,16 @@ TLE groups:
 - [x] DebrisMonitor.jsx — tries GET /api/catalog first; falls back to direct CelesTrak group fetches if catalog empty or unavailable; no behavior change when catalog empty; shows "LOCAL CATALOG" / "CELESTRAK DATA" source label in globe footer
 - [x] AdminDashboardController — catalog stats added (total, synced_at, by_type) to /api/admin/dashboard response
 - [x] AdminDashboard.jsx — CatalogStatus card shows object count, breakdown by type, last sync time, empty-state warning with make sync-catalog hint
-- [x] CatalogController: ETag (md5 of max fetched_at) on every response; 304 on If-None-Match match; ?types= filter (satellite/debris/rocket, unknown tokens → empty); norad_id removed from payload (in line1[2:7])
-- [x] SatelliteCatalogTest.php — 29 tests total (ETag, 304, types filter, unknown type, norad_id absent)
+- [x] CatalogController: ETag (md5 of max fetched_at) on every response; 304 on If-None-Match match; ?types= filter (satellite/debris/rocket/unknown); norad_id included in each satellite entry; ?types=unknown uses whereNull (objects without classification have null object_type, not a string)
+- [x] SatelliteCatalogTest.php — 33 tests total (ETag, 304, types filter, unknown type whereNull, norad_id present, rocket type, all-types, by_type normalization)
+- [x] AdminDashboardController: by_type keys normalized to frontend names (rocket_body→rocket); catalog stats (total, synced_at, by_type) in /api/admin/dashboard
+- [x] HandlePublicRequest: admin bearer token fallback — auth('sanctum') rejected → auth('admin') checked; admin gets enterprise entitlements via EntitlementService::forAdmin(); _isAdminToken flag on client.js suppresses 401 redirect for admin tokens on customer-only endpoints
+- [x] GuestAccessTest.php: 4 new tests for admin token on public endpoints (unlimited, exhausted quota, invalid-token fallthrough, customer-only rejection)
+- [x] satellites:sync SATCAT cross-referencing: fetchSatcatTypes() fetches celestrak.org/pub/satcat.csv; builds NORAD→type map (PAY→satellite, R/B→rocket_body, DEB→debris, UNK→null); each parsed object annotated before persistBatch(); falls back to group-level type when SATCAT unavailable or object absent
+- [x] persistBatch() uses per-object object_type from $p['object_type'] (removed uniform $objectType param)
+- [x] SatelliteSyncTest.php — 5 tests: satellite/rocket/debris classification via SATCAT, SATCAT-fail fallback, per-object missing-from-SATCAT fallback
+- [x] satellites:sync count reporting: DB query for true unique count (replaces inflated per-group sum); 2019-006 and rocket-bodies added to DEFAULT_GROUPS
+- [x] vite.config.js: worker: { format: 'es' } — fixes satellite.js WASM pthreads top-level await incompatible with iife output
 - [x] Real conjunction data pipeline: `conjunction_events` table (CDM ingest) + `SpaceTrackClient` service (session-cookie auth + CDM_PUBLIC fetch)
 - [x] `conjunctions:sync` command — Space-Track CDM_PUBLIC ingest: login → fetch → upsert by cdm_id → generate conjunction_alerts for watched sats → notify users
 - [x] `conjunction_alerts` augmented: `source` (sgp4/space_track_cdm) + `conjunction_event_id` nullable FK; `conjunctions:check` now tags alerts with source='sgp4'
