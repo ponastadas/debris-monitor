@@ -50,7 +50,8 @@ describe('View-switch state persistence', ()=>{
     render(<App/>);
 
     // Switch to tracker — first mount
-    fireEvent.click(screen.getByText('TRACKER'));
+    // NavBar renders each label twice (desktop tab + mobile menu item); click the first (desktop).
+    fireEvent.click(screen.getAllByText('TRACKER')[0]);
     expect(screen.getByTestId('satellite-tracker')).toBeInTheDocument();
 
     const firstProps = trackerRenders[trackerRenders.length - 1];
@@ -63,11 +64,11 @@ describe('View-switch state persistence', ()=>{
     });
 
     // Switch to CATALOG — tracker unmounts
-    fireEvent.click(screen.getByText('CATALOG'));
+    fireEvent.click(screen.getAllByText('CATALOG')[0]);
     expect(screen.getByTestId('debris-monitor')).toBeInTheDocument();
 
     // Switch back to TRACKER — tracker remounts
-    fireEvent.click(screen.getByText('TRACKER'));
+    fireEvent.click(screen.getAllByText('TRACKER')[0]);
     expect(screen.getByTestId('satellite-tracker')).toBeInTheDocument();
 
     // The remounted tracker must receive ISS in savedSats

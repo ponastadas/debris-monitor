@@ -10,8 +10,8 @@ const STYLE = `
 
   .tracker-root {
     display: flex;
-    height: 100vh;
-    width: 100vw;
+    height: 100%;
+    width: 100%;
     background: #020810;
     font-family: 'JetBrains Mono', monospace;
     color: #c8dff0;
@@ -450,7 +450,7 @@ const STYLE = `
     .tracker-root { flex-direction: column; }
 
     .globe-wrap {
-      height: 50vh;
+      height: 50%;
       flex: none;
       width: 100%;
     }
@@ -458,7 +458,7 @@ const STYLE = `
     .panel {
       width: 100% !important;
       min-width: unset;
-      height: 50vh;
+      height: 50%;
       border-left: none;
       border-top: 1px solid rgba(0,212,255,0.12);
       overflow: hidden;
@@ -640,6 +640,8 @@ export default function SatelliteTracker({
   const trackedSatsRef   = useRef([]);          // [{id, name, satrec, colorHex}]
   const satMeshesRef     = useRef({});           // {noradId: {dot, ring, orbit}}
   const searchTimerRef   = useRef(null);
+  const searchAbortRef   = useRef(null);
+  const searchCacheRef   = useRef(new Map());
   const conjLoadCountRef = useRef(0);
   const searchWrapRef = useRef(null);
   const dropItemRefs  = useRef([]);
@@ -904,6 +906,7 @@ export default function SatelliteTracker({
       el.removeEventListener("mousedown", onDown);
       if (el.contains(renderer.domElement)) el.removeChild(renderer.domElement);
       renderer.dispose();
+      searchAbortRef.current?.abort();
     };
   }, []);
 
@@ -913,20 +916,45 @@ export default function SatelliteTracker({
   // ── Search ─────────────────────────────────────────────────
   // Uses internal catalog API — no direct CelesTrak calls from search.
   const performSearch = async (q) => {
+    const trimmed = q.trim();
+
+    // Instant cache hit — no network round-trip
+    if (searchCacheRef.current.has(trimmed)) {
+      const cached = searchCacheRef.current.get(trimmed);
+      setSearchResults(cached);
+      setSearching(false);
+      return cached;
+    }
+
+    // Cancel any in-flight request for a previous query
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
     setSearching(true);
     try {
-      const res     = await client.get('/satellites/search', { params: { q: q.trim() } });
+      const res = await client.get('/satellites/search', {
+        params: { q: trimmed },
+        signal: controller.signal,
+      });
       const results = (res.data?.data ?? res.data ?? []).map(r => ({
         name:    r.name,
         noradId: r.norad_id,
       }));
-      setSearchResults(results);
+      searchCacheRef.current.set(trimmed, results);
+      if (!controller.signal.aborted) {
+        setSearchResults(results);
+      }
       return results;
-    } catch {
+    } catch (err) {
+      // Ignore abort errors (user typed ahead — stale request)
+      if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return [];
       setSearchResults([]);
       return [];
     } finally {
-      setSearching(false);
+      if (!controller.signal.aborted) {
+        setSearching(false);
+      }
     }
   };
 
@@ -941,7 +969,15 @@ export default function SatelliteTracker({
       return;
     }
     setDropdownOpen(true);
-    searchTimerRef.current = setTimeout(() => performSearch(q), 400);
+
+    // Return instantly from session cache — no debounce needed
+    const cached = searchCacheRef.current.get(q.trim());
+    if (cached) {
+      setSearchResults(cached);
+      return;
+    }
+
+    searchTimerRef.current = setTimeout(() => performSearch(q), 300);
   };
 
   // Enter key: never a silent no-op.

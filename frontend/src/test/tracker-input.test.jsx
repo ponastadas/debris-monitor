@@ -252,6 +252,40 @@ describe('Conjunction fetch — multi-satellite', ()=>{
   });
 });
 
+describe('search cache', ()=>{
+
+  beforeEach(()=>{ vi.clearAllMocks(); });
+
+  it('does not refetch the same query within the same session', async ()=>{
+    let searchCallCount = 0;
+    client.get.mockImplementation(url=>{
+      if(url.includes('/satellites/search')){
+        searchCallCount++;
+        return Promise.resolve(SEARCH_OK([{name:'ISS (ZARYA)',norad_id:'25544'}]));
+      }
+      if(url.includes('/conjunctions/'))  return Promise.resolve(CONJ_OK());
+      if(url.match(/\/satellites\/\d+/))  return Promise.resolve(TLE_OK());
+      return Promise.reject(new Error('unmatched: '+url));
+    });
+
+    wrap({ initialNoradId:'' });
+    const input = screen.getByPlaceholderText('Name or NORAD ID…');
+
+    // First search — should trigger a network call
+    fireEvent.change(input, { target:{ value:'ISS' } });
+    await waitFor(()=>expect(searchCallCount).toBe(1));
+
+    // Clear the input
+    fireEvent.change(input, { target:{ value:'' } });
+
+    // Same query again — cache hit, no second network call
+    fireEvent.change(input, { target:{ value:'ISS' } });
+    await act(async ()=>{ await new Promise(r=>setTimeout(r, 400)); });
+
+    expect(searchCallCount).toBe(1);
+  });
+});
+
 describe('loadAndTrack error handling', ()=>{
 
   beforeEach(()=>{

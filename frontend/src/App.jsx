@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AdminAuthProvider } from './contexts/AdminAuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { CookieConsentProvider } from './contexts/CookieConsentContext';
+import NavBar from './components/NavBar';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import CookieBanner from './components/CookieBanner';
@@ -152,61 +153,13 @@ function AlertsUpgradeGate({ plan }) {
   );
 }
 
-// ── Auth nav button style ─────────────────────────────────────────────────────
-
-const authNavBtn = (primary) => ({
-  padding: '6px 14px',
-  fontSize: 9,
-  letterSpacing: 2,
-  fontFamily: "'JetBrains Mono', monospace",
-  background: primary ? 'rgba(0,212,255,0.12)' : 'rgba(0,212,255,0.03)',
-  border: `1px solid ${primary ? '#00d4ff' : 'rgba(0,212,255,0.2)'}`,
-  borderRadius: 4,
-  color: primary ? '#00d4ff' : 'rgba(0,212,255,0.5)',
-  cursor: 'pointer',
-  transition: 'all 0.15s',
-  textDecoration: 'none',
-  display: 'inline-block',
-  lineHeight: 'normal',
-});
-
 // ── Main Globe App (existing view-switcher) ───────────────────────────────────
 
 function MainApp() {
   const { user, loading, logout } = useAuth();
   const [view, setView]       = useState('catalog');
   const [trackId, setTrackId] = useState('25544');
-  // Session-only list of tracked satellites — survives view switches, cleared on page reload.
   const [savedSats, setSavedSats] = useState([]);
-
-  useEffect(() => {
-    const style = document.createElement('style');
-    style.textContent = `
-      .dm-nav-btn:hover { filter: brightness(1.2); }
-      .dm-nav-btn:active { opacity: 0.75; }
-      .dm-view-tab:not([data-active="true"]):hover {
-        background: rgba(0,212,255,0.09) !important;
-        color: rgba(0,212,255,0.75) !important;
-        border-color: rgba(0,212,255,0.35) !important;
-      }
-      .dm-view-tab:active { transform: scale(0.96); }
-
-      /* Nav-tabs must stay to the left of the side panel.
-         Values mirror the panel widths in DebrisMonitor / SatelliteTracker. */
-      .dm-view-tabs { right: 350px; }
-      @media (max-width: 768px) { .dm-view-tabs { right: 270px; } }
-      @media (max-width: 600px)  {
-        .dm-view-tabs {
-          right: 12px;
-          flex-wrap: wrap;
-          justify-content: flex-end;
-          max-width: calc(100vw - 160px); /* keep clear of auth buttons */
-        }
-      }
-    `;
-    document.head.appendChild(style);
-    return () => document.head.removeChild(style);
-  }, []);
 
   function handleTrack(noradId) {
     setTrackId(noradId);
@@ -222,61 +175,11 @@ function MainApp() {
   }
 
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh' }}>
 
-      {/* Globe canvas fills remaining space */}
-      <div style={{ flex: 1, position: 'relative' }}>
+      <NavBar view={view} onViewChange={setView} user={user} logout={logout} />
 
-        {/* Auth buttons — top left corner */}
-        <div style={{
-          position: 'absolute', top: 16, left: 16, zIndex: 100,
-          display: 'flex', gap: 8, alignItems: 'center',
-        }}>
-          {user ? (
-            <>
-              <a href="/dashboard" className="dm-nav-btn" style={authNavBtn(true)}>DASHBOARD</a>
-              <button onClick={logout} className="dm-nav-btn" style={{ ...authNavBtn(false), border: '1px solid rgba(248,81,73,0.25)', color: 'rgba(248,81,73,0.6)' }}>
-                SIGN OUT
-              </button>
-            </>
-          ) : (
-            <>
-              <a href="/register" className="dm-nav-btn" style={authNavBtn(true)}>REGISTER</a>
-              <a href="/login"    className="dm-nav-btn" style={authNavBtn(false)}>SIGN IN</a>
-            </>
-          )}
-        </div>
-
-        {/* View toggle — top right, positioned by .dm-view-tabs media queries */}
-        <div className="dm-view-tabs" style={{
-          position: 'absolute', top: 16, zIndex: 100,
-          display: 'flex', gap: 8, fontFamily: "'JetBrains Mono', monospace",
-        }}>
-          {[
-            { key: 'catalog', label: 'CATALOG' },
-            { key: 'tracker', label: 'TRACKER' },
-            { key: 'alerts',  label: 'ALERTS'  },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              className={`dm-view-tab${view === key ? ' active' : ''}`}
-              data-active={view === key}
-              onClick={() => setView(key)}
-              style={{
-                padding: '6px 14px', fontSize: 9, letterSpacing: 2,
-                background: view === key ? 'rgba(0,212,255,0.15)' : 'rgba(0,212,255,0.05)',
-                border: `1px solid ${view === key ? '#00d4ff' : 'rgba(0,212,255,0.2)'}`,
-                borderRadius: 4,
-                color: view === key ? '#00d4ff' : 'rgba(0,212,255,0.5)',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {view === 'catalog' && <DebrisMonitor onTrack={handleTrack} />}
         {view === 'tracker' && (
           <SatelliteTracker

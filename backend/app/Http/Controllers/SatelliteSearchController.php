@@ -6,12 +6,10 @@ use App\Models\Satellite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 
 class SatelliteSearchController extends Controller
 {
     private const MAX_RESULTS = 10;
-    private const CELESTRAK_URL = 'https://celestrak.org/NORAD/elements/gp.php';
 
     /**
      * Common-name → NORAD ID aliases for satellites whose TLE names have no
@@ -30,12 +28,10 @@ class SatelliteSearchController extends Controller
      * Search the satellite catalog by NORAD ID, name, or international designator.
      *
      * GET /api/satellites/search?q=ISS
-     * GET /api/satellites/search?q=horacio
      * GET /api/satellites/search?q=1998-067A   (international designator)
      * GET /api/satellites/search?q=25544       (NORAD ID)
      *
-     * Local DB first; falls back to live CelesTrak queries when local returns
-     * nothing, then caches any found satellites for future lookups.
+     * Local DB only — results are cached for 300 seconds.
      */
     public function __invoke(Request $request): JsonResponse
     {
@@ -45,29 +41,21 @@ class SatelliteSearchController extends Controller
             return $this->success([]);
         }
 
+        $cacheKey = 'sat_search:' . md5(strtolower($q));
+
+        if ($cached = Cache::get($cacheKey)) {
+            return $this->success($cached);
+        }
+
         if (ctype_digit($q)) {
             $results = $this->searchByNorad($q);
-            if (empty($results)) {
-                $results = $this->celestrakByNorad($q);
-            }
+            Cache::put($cacheKey, $results, 300);
             return $this->success($results);
         }
 
         $results = $this->searchByText($q);
 
-        if (empty($results)) {
-            // Check negative cache before hitting CelesTrak — a confirmed miss
-            // within the last 60s doesn't warrant another live call.
-            $missKey = 'search_miss:' . $this->strip($q);
-
-            if (! Cache::has($missKey)) {
-                $results = $this->celestrakFallback($q);
-
-                if (empty($results)) {
-                    Cache::put($missKey, true, 60);
-                }
-            }
-        }
+        Cache::put($cacheKey, $results, 300);
 
         return $this->success($results);
     }
@@ -92,7 +80,7 @@ class SatelliteSearchController extends Controller
      * Text query: four strategies merged in priority order.
      *
      * 1. Standard prefix/substring LIKE
-     * 2. Strip-normalised LIKE — "goes16" matches "GOES 16"
+     * 2. Strip-normalised LIKE — "goes16" matches "GOES 16" (uses generated column)
      * 3. International designator LIKE — "1998-067A" finds ISS
      * 4. Alias prepend — "hubble" → HST
      */
@@ -118,24 +106,18 @@ class SatelliteSearchController extends Controller
             }
         }
 
-        // Strategy 2: strip-normalised match
+        // Strategy 2: strip-normalised match (uses name_normalized generated column)
         if (count($results) < self::MAX_RESULTS) {
             $stripped = $this->strip($q);
 
             if (strlen($stripped) >= 2) {
                 $norm = Satellite::whereHas('currentTle')
                 ->where(function ($qb) use ($stripped) {
-                    $qb->whereRaw(
-                        "REGEXP_REPLACE(LOWER(name), '[^a-z0-9]', '') LIKE ?",
-                        ["{$stripped}%"]
-                    )
-                    ->orWhereRaw(
-                        "REGEXP_REPLACE(LOWER(name), '[^a-z0-9]', '') LIKE ?",
-                        ["%{$stripped}%"]
-                    );
+                    $qb->where('name_normalized', 'like', "{$stripped}%")
+                       ->orWhere('name_normalized', 'like', "%{$stripped}%");
                 })
                 ->orderByRaw(
-                    "CASE WHEN REGEXP_REPLACE(LOWER(name), '[^a-z0-9]', '') LIKE ? THEN 0 ELSE 1 END",
+                    "CASE WHEN name_normalized LIKE ? THEN 0 ELSE 1 END",
                     ["{$stripped}%"]
                 )
                 ->limit(self::MAX_RESULTS)
@@ -195,11 +177,8 @@ class SatelliteSearchController extends Controller
         }
 
         $rows = Satellite::whereHas('currentTle')
-            ->whereNotNull('international_designator')
-            ->whereRaw(
-                "REGEXP_REPLACE(LOWER(international_designator), '[^a-z0-9]', '') LIKE ?",
-                ["{$norm}%"]
-            )
+            ->whereNotNull('designator_normalized')
+            ->where('designator_normalized', 'like', "{$norm}%")
             ->limit(self::MAX_RESULTS)
             ->get(['norad_id', 'name']);
 
@@ -211,151 +190,6 @@ class SatelliteSearchController extends Controller
         }
 
         return $out;
-    }
-
-    // ── Live CelesTrak fallbacks (cache results to DB) ────────────────────────
-
-    /**
-     * Fallback for numeric NORAD ID queries: CATNR= endpoint is exact and fast.
-     *
-     * @return list<array{norad_id: string, name: string}>
-     */
-    private function celestrakByNorad(string $noradId): array
-    {
-        $parsed = $this->celestrakFetch(['CATNR' => $noradId]);
-
-        if (empty($parsed)) {
-            return [];
-        }
-
-        $this->cacheSatellites($parsed);
-
-        return array_map(fn ($p) => ['norad_id' => $p['norad_id'], 'name' => $p['name']], $parsed);
-    }
-
-    /**
-     * Fallback for text/designator queries when local DB returns nothing.
-     *
-     * Tries in order:
-     *   1. NAME=<q>                              — exact as typed
-     *   2. NAME=<stripped-uppercase>             — "Quick-3" → "QUICK3"
-     *   3. INTDES=<q> (if looks like designator) — "2020-081J" → INTDES query
-     *
-     * @return list<array{norad_id: string, name: string}>
-     */
-    private function celestrakFallback(string $q): array
-    {
-        $candidates = [['NAME' => $q]];
-
-        $stripped = strtoupper($this->strip($q));
-        if ($stripped !== strtoupper($q) && $stripped !== '') {
-            $candidates[] = ['NAME' => $stripped];
-        }
-
-        // If the query looks like an international designator (e.g. "2020-081J")
-        // also try the INTDES= parameter which is more precise than NAME=.
-        if (preg_match('/^\d{4}-\d{3}[A-Z]*$/i', $q) || preg_match('/^\d{2}-\d{3}[A-Z]*$/i', $q)) {
-            $candidates[] = ['INTDES' => $q];
-        }
-
-        foreach ($candidates as $params) {
-            $parsed = $this->celestrakFetch($params);
-
-            if (! empty($parsed)) {
-                $this->cacheSatellites($parsed);
-
-                return array_slice(
-                    array_map(fn ($p) => ['norad_id' => $p['norad_id'], 'name' => $p['name']], $parsed),
-                    0,
-                    self::MAX_RESULTS
-                );
-            }
-        }
-
-        return [];
-    }
-
-    /**
-     * Execute a single CelesTrak GP query and return parsed TLE records.
-     * Returns [] on any error or empty response.
-     *
-     * @param  array<string,string>  $params
-     * @return list<array{name: string, norad_id: string, line1: string, line2: string}>
-     */
-    private function celestrakFetch(array $params): array
-    {
-        try {
-            $response = Http::timeout(10)->get(self::CELESTRAK_URL, array_merge($params, ['FORMAT' => 'TLE']));
-        } catch (\Throwable) {
-            return [];
-        }
-
-        if (! $response->ok()) {
-            return [];
-        }
-
-        $body = trim($response->body());
-
-        if (! $body || str_contains($body, 'No GP data')) {
-            return [];
-        }
-
-        return $this->parseTleLines($body);
-    }
-
-    /**
-     * Upsert satellites from a live fetch into the local catalog so subsequent
-     * searches are served from DB.
-     *
-     * @param list<array{name: string, norad_id: string, line1: string, line2: string}> $parsed
-     */
-    private function cacheSatellites(array $parsed): void
-    {
-        $now = now();
-
-        foreach ($parsed as $p) {
-            $satellite = Satellite::updateOrCreate(
-                ['norad_id' => $p['norad_id']],
-                ['name' => $p['name'], 'catalog_source' => 'celestrak', 'last_seen_at' => $now]
-            );
-
-            $satellite->upsertCurrentTle($p['line1'], $p['line2']);
-        }
-    }
-
-    /**
-     * Parse raw TLE body (3-line sets) into structured records.
-     *
-     * @return list<array{name: string, norad_id: string, line1: string, line2: string}>
-     */
-    private function parseTleLines(string $body): array
-    {
-        $lines = array_values(array_filter(
-            array_map('trim', explode("\n", $body)),
-            fn ($l) => $l !== ''
-        ));
-
-        $results = [];
-
-        for ($i = 0; $i + 2 < count($lines); $i += 3) {
-            $name  = $lines[$i];
-            $line1 = $lines[$i + 1];
-            $line2 = $lines[$i + 2];
-
-            if (! str_starts_with($line1, '1 ') || ! str_starts_with($line2, '2 ')) {
-                continue;
-            }
-
-            $noradId = trim(substr($line1, 2, 5));
-
-            if (! $noradId || ! ctype_digit($noradId)) {
-                continue;
-            }
-
-            $results[] = ['name' => $name, 'norad_id' => $noradId, 'line1' => $line1, 'line2' => $line2];
-        }
-
-        return $results;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

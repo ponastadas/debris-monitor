@@ -113,8 +113,8 @@ const STYLE = `
 
   .dm-root {
     display: flex;
-    height: 100vh;
-    width: 100vw;
+    height: 100%;
+    width: 100%;
     background: #020810;
     font-family: 'JetBrains Mono', monospace;
     color: #c8dff0;
@@ -385,7 +385,7 @@ const STYLE = `
     .dm-root { flex-direction: column; }
 
     .globe-wrap {
-      height: 55vh;
+      height: 55%;
       flex: none;
       width: 100%;
     }
@@ -393,7 +393,7 @@ const STYLE = `
     .panel {
       width: 100% !important;
       min-width: unset;
-      height: 45vh;
+      height: 45%;
       border-left: none;
       border-top: 1px solid rgba(0,212,255,0.12);
       overflow: hidden;

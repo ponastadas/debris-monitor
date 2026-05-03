@@ -35,11 +35,7 @@ it('searches by norad_id from local catalog', function () {
          ->assertJsonPath('data.0.norad_id', '25544');
 });
 
-it('returns empty when catalog is empty and celestrak has no match', function () {
-    Http::fake([
-        'celestrak.org/*' => Http::response('No GP data found', 404),
-    ]);
-
+it('returns empty when local catalog has no match', function () {
     $this->getJson('/api/satellites/search?q=ISS')
          ->assertOk()
          ->assertJson(['success' => true, 'data' => []]);
@@ -56,99 +52,32 @@ it('limits results to 10 matches', function () {
          ->assertJsonCount(10, 'data');
 });
 
-it('does not call celestrak on search when local result found', function () {
-    Http::fake();
-
+it('search only uses local catalog', function () {
     $iss = Satellite::factory()->iss()->create();
     TleRecord::factory()->fresh()->for($iss)->create();
 
-    $this->getJson('/api/satellites/search?q=ISS')->assertOk();
-
-    Http::assertNothingSent();
-});
-
-// ── Live CelesTrak fallback (satellites absent from local catalog) ─────────────
-
-$horacioTle =
-    "HORACIO                 \n".
-    "1 59098U 24043A   26109.52124740  .00002200  00000+0  18994-3 0  9994\n".
-    "2 59098  97.8434 240.9608 0009670 206.7984 153.2740 14.98275414115885";
-
-$r2Tle =
-    "R2                      \n".
-    "1 46913U 20081J   26109.56051816  .00002247  00000+0  17722-3 0  9991\n".
-    "2 46913  36.8986 212.3400 0009670 206.7984 153.2740 15.12345678901234";
-
-it('finds HORACIO by name via live CelesTrak fallback', function () use ($horacioTle) {
-    Http::fake(['celestrak.org/*' => Http::response($horacioTle, 200)]);
-
-    $this->getJson('/api/satellites/search?q=horacio')
+    $this->getJson('/api/satellites/search?q=ISS')
          ->assertOk()
-         ->assertJsonPath('data.0.norad_id', '59098')
-         ->assertJsonPath('data.0.name', 'HORACIO');
+         ->assertJsonPath('data.0.name', 'ISS (ZARYA)');
 });
 
-it('finds HORACIO by NORAD ID via live CelesTrak fallback', function () use ($horacioTle) {
-    Http::fake(['celestrak.org/*' => Http::response($horacioTle, 200)]);
+it('caches search results for repeated queries', function () {
+    $iss = Satellite::factory()->iss()->create();
+    TleRecord::factory()->fresh()->for($iss)->create();
 
-    $this->getJson('/api/satellites/search?q=59098')
+    // First request — populates cache
+    $this->getJson('/api/satellites/search?q=ISS')
          ->assertOk()
-         ->assertJsonPath('data.0.norad_id', '59098');
-});
+         ->assertJsonPath('data.0.norad_id', '25544');
 
-it('finds HORACIO by international designator via live CelesTrak fallback', function () use ($horacioTle) {
-    Http::fake(['celestrak.org/*' => Http::response($horacioTle, 200)]);
+    // Delete the satellite from DB to prove cache is being used
+    \App\Models\TleRecord::where('satellite_id', $iss->id)->delete();
+    $iss->delete();
 
-    $this->getJson('/api/satellites/search?q=2024-043A')
+    // Second request — must still return the cached result
+    $this->getJson('/api/satellites/search?q=ISS')
          ->assertOk()
-         ->assertJsonPath('data.0.norad_id', '59098');
-});
-
-it('finds R2 by name via live CelesTrak fallback', function () use ($r2Tle) {
-    Http::fake(['celestrak.org/*' => Http::response($r2Tle, 200)]);
-
-    $this->getJson('/api/satellites/search?q=r2')
-         ->assertOk()
-         ->assertJsonPath('data.0.norad_id', '46913')
-         ->assertJsonPath('data.0.name', 'R2');
-});
-
-it('finds R2 by NORAD ID via live CelesTrak fallback', function () use ($r2Tle) {
-    Http::fake(['celestrak.org/*' => Http::response($r2Tle, 200)]);
-
-    $this->getJson('/api/satellites/search?q=46913')
-         ->assertOk()
-         ->assertJsonPath('data.0.norad_id', '46913');
-});
-
-it('finds R2 by international designator via live CelesTrak fallback', function () use ($r2Tle) {
-    Http::fake(['celestrak.org/*' => Http::response($r2Tle, 200)]);
-
-    $this->getJson('/api/satellites/search?q=2020-081J')
-         ->assertOk()
-         ->assertJsonPath('data.0.norad_id', '46913');
-});
-
-it('caches satellite to local DB after live CelesTrak fallback search', function () use ($horacioTle) {
-    Http::fake(['celestrak.org/*' => Http::response($horacioTle, 200)]);
-
-    $this->getJson('/api/satellites/search?q=59098')->assertOk();
-
-    expect(Satellite::where('norad_id', '59098')->exists())->toBeTrue();
-});
-
-it('negative cache: second search miss within 60s does not hit CelesTrak', function () {
-    Http::fake(['celestrak.org/*' => Http::response('No GP data found', 404)]);
-
-    // First request — misses local + CelesTrak, populates negative cache.
-    // 'xyznotreal' strips to 'XYZNOTREAL' == strtoupper(q), so only one NAME= candidate.
-    $this->getJson('/api/satellites/search?q=xyznotreal')->assertOk()->assertJson(['data' => []]);
-    $firstCount = count(Http::recorded());
-
-    // Second request within TTL — negative cache hit, must not call CelesTrak again
-    $this->getJson('/api/satellites/search?q=xyznotreal')->assertOk()->assertJson(['data' => []]);
-
-    expect(count(Http::recorded()))->toBe($firstCount); // no new requests on second miss
+         ->assertJsonPath('data.0.norad_id', '25544');
 });
 
 // ── Search ↔ show consistency guarantee ──────────────────────────────────────
