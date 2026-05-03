@@ -196,8 +196,8 @@ it('staleness sweep skips satellites with a fresh TLE (< 24h)', function () {
 
     $this->artisan('satellites:sync', ['--groups' => 'stations'])->assertSuccessful();
 
-    // Only the GROUP=stations fetch fires (1 request); no CATNR call for the fresh sat
-    Http::assertSentCount(1);
+    // SATCAT fetch + GROUP=stations fetch = 2 requests; no CATNR call for the fresh sat
+    Http::assertSentCount(2);
 });
 
 it('staleness sweep respects the SATELLITE_SYNC_STALE_LIMIT cap', function () use ($freshTle) {

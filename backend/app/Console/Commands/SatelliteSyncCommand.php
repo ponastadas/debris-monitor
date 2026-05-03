@@ -65,6 +65,21 @@ class SatelliteSyncCommand extends Command
 
     private const CELESTRAK_URL = 'https://celestrak.org/NORAD/elements/gp.php';
 
+    private const SATCAT_URL = 'https://celestrak.org/pub/satcat.csv';
+
+    /**
+     * SATCAT OBJECT_TYPE column value → satellites.object_type.
+     * PAY = payload (active satellite), R/B = rocket body, DEB = debris,
+     * UNK/TBA = unknown classification.  null means store as NULL in the DB.
+     */
+    private const SATCAT_TYPE_MAP = [
+        'PAY' => 'satellite',
+        'R/B' => 'rocket_body',
+        'DEB' => 'debris',
+        'UNK' => null,
+        'TBA' => null,
+    ];
+
     private const OBJECT_TYPE_MAP = [
         'active'             => 'satellite',
         'stations'           => 'satellite',
@@ -109,6 +124,11 @@ class SatelliteSyncCommand extends Command
         $isDryRun && $this->warn('DRY RUN — no data will be written');
         $this->newLine();
 
+        // SATCAT provides per-object type classification (PAY/R/B/DEB/UNK).
+        // Falls back to group-level types when unavailable (e.g. network error).
+        $satcatTypes = $this->fetchSatcatTypes();
+        $this->newLine();
+
         $totalSatellites = 0;
         $totalTleRecords = 0;
         $now             = now();
@@ -132,8 +152,17 @@ class SatelliteSyncCommand extends Command
                 continue;
             }
 
-            $objectType = self::OBJECT_TYPE_MAP[$group] ?? null;
-            [$upserted, $tleInserted] = $this->persistBatch($parsed, $objectType, $now);
+            // Annotate each object with its per-object type from SATCAT,
+            // falling back to the group-level type when SATCAT has no entry.
+            $groupType = self::OBJECT_TYPE_MAP[$group] ?? null;
+            foreach ($parsed as &$p) {
+                $p['object_type'] = array_key_exists($p['norad_id'], $satcatTypes)
+                    ? $satcatTypes[$p['norad_id']]
+                    : $groupType;
+            }
+            unset($p);
+
+            [$upserted, $tleInserted] = $this->persistBatch($parsed, $now);
 
             $this->line("  ✓ Upserted {$upserted} satellites, {$tleInserted} TLE records");
             $totalSatellites += $upserted;
@@ -278,6 +307,73 @@ class SatelliteSyncCommand extends Command
     }
 
     /**
+     * Fetch SATCAT CSV and build a NORAD ID → object_type map.
+     *
+     * SATCAT provides authoritative per-object classification (PAY/R/B/DEB/UNK),
+     * whereas CelesTrak TLE groups only expose group-level type hints that
+     * misclassify rocket bodies and debris mixed into the 'active' group.
+     *
+     * Returns an empty array on network failure; callers fall back to group-level types.
+     *
+     * @return array<string, string|null>  norad_id (5-digit zero-padded) => object_type|null
+     */
+    private function fetchSatcatTypes(): array
+    {
+        $this->line('Fetching SATCAT for per-object type classification…');
+
+        try {
+            $response = Http::timeout(60)->get(self::SATCAT_URL);
+        } catch (\Throwable $e) {
+            $this->warn("SATCAT fetch failed: {$e->getMessage()} — falling back to group-level types");
+            return [];
+        }
+
+        if (! $response->ok()) {
+            $this->warn("SATCAT fetch failed: HTTP {$response->status()} — falling back to group-level types");
+            return [];
+        }
+
+        $map   = [];
+        $first = true;
+
+        foreach (explode("\n", $response->body()) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+
+            if ($first) {
+                $first = false; // skip header row
+                continue;
+            }
+
+            $cols = str_getcsv($line);
+
+            // NORAD_CAT_ID = column 2, OBJECT_TYPE = column 3
+            if (count($cols) < 4) {
+                continue;
+            }
+
+            $rawId = trim($cols[2]);
+            if (! $rawId || ! ctype_digit($rawId)) {
+                continue;
+            }
+
+            // Normalise to 5-digit zero-padded string to match TLE-parsed norad_id values.
+            $noradId    = str_pad($rawId, 5, '0', STR_PAD_LEFT);
+            $satcatType = trim($cols[3]);
+
+            if (array_key_exists($satcatType, self::SATCAT_TYPE_MAP)) {
+                $map[$noradId] = self::SATCAT_TYPE_MAP[$satcatType];
+            }
+        }
+
+        $this->line('  SATCAT loaded — '.count($map).' object type mappings');
+
+        return $map;
+    }
+
+    /**
      * Fetch a CelesTrak group and return parsed TLE triplets.
      * Returns null on HTTP failure, empty array when group has no results.
      *
@@ -357,11 +453,12 @@ class SatelliteSyncCommand extends Command
 
     /**
      * Upsert a batch of parsed TLE records into the DB.
+     * Each element of $parsed must have an 'object_type' key (nullable string).
      * Returns [satellites upserted, TLE records inserted].
      *
-     * @param list<array{name: string, norad_id: string, line1: string, line2: string}> $parsed
+     * @param list<array{name: string, norad_id: string, line1: string, line2: string, object_type: string|null}> $parsed
      */
-    private function persistBatch(array $parsed, ?string $objectType, Carbon $now): array
+    private function persistBatch(array $parsed, Carbon $now): array
     {
         // Deduplicate by norad_id within the batch — a CelesTrak group file can
         // occasionally contain the same satellite twice (e.g. active group overlaps
@@ -380,17 +477,20 @@ class SatelliteSyncCommand extends Command
         // Step 1: Upsert satellites (norad_id is the unique key).
         // Chunked to stay under MySQL's 65,535 prepared-statement placeholder limit
         // (9 columns × 7,000 rows = 63,000 placeholders per batch).
-        $satelliteRows = array_map(fn ($p) => [
-            'norad_id'                => $p['norad_id'],
-            'name'                    => $p['name'],
-            'object_type'             => $objectType,
-            'international_designator' => $p['international_designator'] ?? null,
-            'is_active'               => $objectType !== 'debris' && $objectType !== 'rocket_body',
-            'catalog_source'          => 'celestrak',
-            'last_seen_at'            => $now->toDateTimeString(),
-            'created_at'              => $now->toDateTimeString(),
-            'updated_at'              => $now->toDateTimeString(),
-        ], $parsed);
+        $satelliteRows = array_map(function ($p) use ($now) {
+            $type = $p['object_type'] ?? null;
+            return [
+                'norad_id'                => $p['norad_id'],
+                'name'                    => $p['name'],
+                'object_type'             => $type,
+                'international_designator' => $p['international_designator'] ?? null,
+                'is_active'               => $type !== 'debris' && $type !== 'rocket_body',
+                'catalog_source'          => 'celestrak',
+                'last_seen_at'            => $now->toDateTimeString(),
+                'created_at'              => $now->toDateTimeString(),
+                'updated_at'             => $now->toDateTimeString(),
+            ];
+        }, $parsed);
 
         foreach (array_chunk($satelliteRows, 7000) as $chunk) {
             DB::table('satellites')->upsert(
