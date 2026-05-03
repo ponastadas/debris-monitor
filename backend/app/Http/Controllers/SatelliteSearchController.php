@@ -76,8 +76,11 @@ class SatelliteSearchController extends Controller
 
     private function searchByNorad(string $q): array
     {
-        return Satellite::where('norad_id', $q)
-            ->orWhere('norad_id', 'like', "{$q}%")
+        return Satellite::whereHas('currentTle')
+            ->where(function ($qb) use ($q) {
+                $qb->where('norad_id', $q)
+                   ->orWhere('norad_id', 'like', "{$q}%");
+            })
             ->limit(self::MAX_RESULTS)
             ->get(['norad_id', 'name'])
             ->map(fn ($s) => ['norad_id' => $s->norad_id, 'name' => $s->name])
@@ -99,8 +102,11 @@ class SatelliteSearchController extends Controller
         $results = [];
 
         // Strategy 1: standard name LIKE (prefix scored above substring)
-        $standard = Satellite::where('name', 'like', "{$q}%")
-            ->orWhere('name', 'like', "%{$q}%")
+        $standard = Satellite::whereHas('currentTle')
+            ->where(function ($qb) use ($q) {
+                $qb->where('name', 'like', "{$q}%")
+                   ->orWhere('name', 'like', "%{$q}%");
+            })
             ->orderByRaw("CASE WHEN name LIKE ? THEN 0 ELSE 1 END", ["{$q}%"])
             ->limit(self::MAX_RESULTS)
             ->get(['norad_id', 'name']);
@@ -117,14 +123,17 @@ class SatelliteSearchController extends Controller
             $stripped = $this->strip($q);
 
             if (strlen($stripped) >= 2) {
-                $norm = Satellite::whereRaw(
-                    "REGEXP_REPLACE(LOWER(name), '[^a-z0-9]', '') LIKE ?",
-                    ["{$stripped}%"]
-                )
-                ->orWhereRaw(
-                    "REGEXP_REPLACE(LOWER(name), '[^a-z0-9]', '') LIKE ?",
-                    ["%{$stripped}%"]
-                )
+                $norm = Satellite::whereHas('currentTle')
+                ->where(function ($qb) use ($stripped) {
+                    $qb->whereRaw(
+                        "REGEXP_REPLACE(LOWER(name), '[^a-z0-9]', '') LIKE ?",
+                        ["{$stripped}%"]
+                    )
+                    ->orWhereRaw(
+                        "REGEXP_REPLACE(LOWER(name), '[^a-z0-9]', '') LIKE ?",
+                        ["%{$stripped}%"]
+                    );
+                })
                 ->orderByRaw(
                     "CASE WHEN REGEXP_REPLACE(LOWER(name), '[^a-z0-9]', '') LIKE ? THEN 0 ELSE 1 END",
                     ["{$stripped}%"]
@@ -154,7 +163,8 @@ class SatelliteSearchController extends Controller
 
         if ($aliasId !== null) {
             if (! isset($seen[$aliasId])) {
-                $aliasSat = Satellite::where('norad_id', $aliasId)
+                $aliasSat = Satellite::whereHas('currentTle')
+                    ->where('norad_id', $aliasId)
                     ->get(['norad_id', 'name'])
                     ->map(fn ($s) => ['norad_id' => $s->norad_id, 'name' => $s->name])
                     ->first();
@@ -184,7 +194,8 @@ class SatelliteSearchController extends Controller
             return [];
         }
 
-        $rows = Satellite::whereNotNull('international_designator')
+        $rows = Satellite::whereHas('currentTle')
+            ->whereNotNull('international_designator')
             ->whereRaw(
                 "REGEXP_REPLACE(LOWER(international_designator), '[^a-z0-9]', '') LIKE ?",
                 ["{$norm}%"]

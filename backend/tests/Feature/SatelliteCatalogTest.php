@@ -14,8 +14,11 @@ it('returns empty array for short queries', function () {
 });
 
 it('searches by name from local catalog', function () {
-    Satellite::factory()->iss()->create();
-    Satellite::factory()->forNorad('20580', 'HST')->create();
+    $iss = Satellite::factory()->iss()->create();
+    TleRecord::factory()->fresh()->for($iss)->create();
+
+    $hst = Satellite::factory()->forNorad('20580', 'HST')->create();
+    TleRecord::factory()->fresh()->for($hst)->create();
 
     $this->getJson('/api/satellites/search?q=ISS')
          ->assertOk()
@@ -24,7 +27,8 @@ it('searches by name from local catalog', function () {
 });
 
 it('searches by norad_id from local catalog', function () {
-    Satellite::factory()->iss()->create();
+    $iss = Satellite::factory()->iss()->create();
+    TleRecord::factory()->fresh()->for($iss)->create();
 
     $this->getJson('/api/satellites/search?q=25544')
          ->assertOk()
@@ -43,7 +47,8 @@ it('returns empty when catalog is empty and celestrak has no match', function ()
 
 it('limits results to 10 matches', function () {
     for ($i = 0; $i < 15; $i++) {
-        Satellite::factory()->forNorad("1000{$i}", "DEBRIS-{$i}", 'debris')->create();
+        $sat = Satellite::factory()->forNorad("1000{$i}", "DEBRIS-{$i}", 'debris')->create();
+        TleRecord::factory()->fresh()->for($sat)->create();
     }
 
     $this->getJson('/api/satellites/search?q=DEBRIS')
@@ -54,7 +59,8 @@ it('limits results to 10 matches', function () {
 it('does not call celestrak on search when local result found', function () {
     Http::fake();
 
-    Satellite::factory()->iss()->create();
+    $iss = Satellite::factory()->iss()->create();
+    TleRecord::factory()->fresh()->for($iss)->create();
 
     $this->getJson('/api/satellites/search?q=ISS')->assertOk();
 
@@ -143,6 +149,37 @@ it('negative cache: second search miss within 60s does not hit CelesTrak', funct
     $this->getJson('/api/satellites/search?q=xyznotreal')->assertOk()->assertJson(['data' => []]);
 
     expect(count(Http::recorded()))->toBe($firstCount); // no new requests on second miss
+});
+
+// ── Search ↔ show consistency guarantee ──────────────────────────────────────
+
+it('search does not return satellites without a current TLE', function () {
+    Http::fake(['celestrak.org/*' => Http::response('No GP data found', 404)]);
+
+    Satellite::factory()->iss()->create(); // satellite row, no TLE record
+
+    $this->getJson('/api/satellites/search?q=ISS')
+         ->assertOk()
+         ->assertJson(['success' => true, 'data' => []]);
+});
+
+it('satellite returned by local DB search can always be loaded by show', function () {
+    Http::fake();
+
+    $iss = Satellite::factory()->iss()->create();
+    TleRecord::factory()->fresh()->for($iss)->create([
+        'line1' => '1 25544U 98067A   24001.50000000  .00002182  00000-0  40768-4 0  9990',
+        'line2' => '2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129',
+    ]);
+
+    $searchRes = $this->getJson('/api/satellites/search?q=ISS')->assertOk();
+    $noradId   = $searchRes->json('data.0.norad_id');
+
+    $this->getJson("/api/satellites/{$noradId}")
+         ->assertOk()
+         ->assertJsonPath('data.source', 'local');
+
+    Http::assertNothingSent();
 });
 
 // ── is_current uniqueness ─────────────────────────────────────────────────────
@@ -340,7 +377,10 @@ it('returns 404 for unknown norad id from celestrak', function () {
         'celestrak.org/*' => Http::response('No GP data found', 200),
     ]);
 
-    $this->getJson('/api/satellites/9999999')->assertNotFound();
+    $this->getJson('/api/satellites/9999999')
+         ->assertNotFound()
+         ->assertJsonPath('success', false)
+         ->assertJsonPath('error.code', 'NOT_FOUND');
 });
 
 it('serves stale local TLE even when celestrak is unreachable', function () {

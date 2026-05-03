@@ -164,6 +164,7 @@ const authNavBtn = (primary) => ({
   borderRadius: 4,
   color: primary ? '#00d4ff' : 'rgba(0,212,255,0.5)',
   cursor: 'pointer',
+  transition: 'all 0.15s',
   textDecoration: 'none',
   display: 'inline-block',
   lineHeight: 'normal',
@@ -175,10 +176,49 @@ function MainApp() {
   const { user, loading, logout } = useAuth();
   const [view, setView]       = useState('catalog');
   const [trackId, setTrackId] = useState('25544');
+  // Session-only list of tracked satellites — survives view switches, cleared on page reload.
+  const [savedSats, setSavedSats] = useState([]);
+
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      .dm-nav-btn:hover { filter: brightness(1.2); }
+      .dm-nav-btn:active { opacity: 0.75; }
+      .dm-view-tab:not([data-active="true"]):hover {
+        background: rgba(0,212,255,0.09) !important;
+        color: rgba(0,212,255,0.75) !important;
+        border-color: rgba(0,212,255,0.35) !important;
+      }
+      .dm-view-tab:active { transform: scale(0.96); }
+
+      /* Nav-tabs must stay to the left of the side panel.
+         Values mirror the panel widths in DebrisMonitor / SatelliteTracker. */
+      .dm-view-tabs { right: 350px; }
+      @media (max-width: 768px) { .dm-view-tabs { right: 270px; } }
+      @media (max-width: 600px)  {
+        .dm-view-tabs {
+          right: 12px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          max-width: calc(100vw - 160px); /* keep clear of auth buttons */
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
 
   function handleTrack(noradId) {
     setTrackId(noradId);
     setView('tracker');
+  }
+
+  function handleSatelliteAdded(id, name) {
+    setSavedSats(prev => prev.find(s => s.id === id) ? prev : [...prev, { id, name }]);
+  }
+
+  function handleSatelliteRemoved(id) {
+    setSavedSats(prev => prev.filter(s => s.id !== id));
   }
 
   return (
@@ -194,22 +234,22 @@ function MainApp() {
         }}>
           {user ? (
             <>
-              <a href="/dashboard" style={authNavBtn(true)}>DASHBOARD</a>
-              <button onClick={logout} style={{ ...authNavBtn(false), border: '1px solid rgba(248,81,73,0.25)', color: 'rgba(248,81,73,0.6)' }}>
+              <a href="/dashboard" className="dm-nav-btn" style={authNavBtn(true)}>DASHBOARD</a>
+              <button onClick={logout} className="dm-nav-btn" style={{ ...authNavBtn(false), border: '1px solid rgba(248,81,73,0.25)', color: 'rgba(248,81,73,0.6)' }}>
                 SIGN OUT
               </button>
             </>
           ) : (
             <>
-              <a href="/register" style={authNavBtn(true)}>REGISTER</a>
-              <a href="/login"    style={authNavBtn(false)}>SIGN IN</a>
+              <a href="/register" className="dm-nav-btn" style={authNavBtn(true)}>REGISTER</a>
+              <a href="/login"    className="dm-nav-btn" style={authNavBtn(false)}>SIGN IN</a>
             </>
           )}
         </div>
 
-        {/* View toggle — top right, clears the tracker panel */}
-        <div style={{
-          position: 'absolute', top: 16, right: 360, zIndex: 100,
+        {/* View toggle — top right, positioned by .dm-view-tabs media queries */}
+        <div className="dm-view-tabs" style={{
+          position: 'absolute', top: 16, zIndex: 100,
           display: 'flex', gap: 8, fontFamily: "'JetBrains Mono', monospace",
         }}>
           {[
@@ -219,6 +259,8 @@ function MainApp() {
           ].map(({ key, label }) => (
             <button
               key={key}
+              className={`dm-view-tab${view === key ? ' active' : ''}`}
+              data-active={view === key}
               onClick={() => setView(key)}
               style={{
                 padding: '6px 14px', fontSize: 9, letterSpacing: 2,
@@ -227,6 +269,7 @@ function MainApp() {
                 borderRadius: 4,
                 color: view === key ? '#00d4ff' : 'rgba(0,212,255,0.5)',
                 cursor: 'pointer',
+                transition: 'all 0.15s',
               }}
             >
               {label}
@@ -235,7 +278,14 @@ function MainApp() {
         </div>
 
         {view === 'catalog' && <DebrisMonitor onTrack={handleTrack} />}
-        {view === 'tracker' && <SatelliteTracker initialNoradId={trackId} />}
+        {view === 'tracker' && (
+          <SatelliteTracker
+            initialNoradId={trackId}
+            savedSats={savedSats}
+            onSatelliteAdded={handleSatelliteAdded}
+            onSatelliteRemoved={handleSatelliteRemoved}
+          />
+        )}
         {view === 'alerts' && (
           loading
             ? (

@@ -372,6 +372,37 @@ const STYLE = `
     color: rgba(0,212,255,0.4);
     letter-spacing: 2px;
   }
+
+  /* ─── Responsive layout ─────────────────────────────────────────────── */
+
+  /* Tablet: narrow panel so the globe gets more space */
+  @media (max-width: 768px) {
+    .panel { width: 260px; min-width: 260px; }
+  }
+
+  /* Mobile: stack globe on top, panel below */
+  @media (max-width: 600px) {
+    .dm-root { flex-direction: column; }
+
+    .globe-wrap {
+      height: 55vh;
+      flex: none;
+      width: 100%;
+    }
+
+    .panel {
+      width: 100% !important;
+      min-width: unset;
+      height: 45vh;
+      border-left: none;
+      border-top: 1px solid rgba(0,212,255,0.12);
+      overflow: hidden;
+    }
+
+    /* HUD decorations that get in the way on small screens */
+    .fps-badge { font-size: 8px; letter-spacing: 1px; }
+    .globe-label { font-size: 8px; letter-spacing: 2px; bottom: 12px; }
+  }
 `;
 
 export default function DebrisMonitor({ onTrack }) {
@@ -400,12 +431,14 @@ export default function DebrisMonitor({ onTrack }) {
   // Init Three.js scene
   useEffect(() => {
     const canvas = canvasRef.current;
-    const w = canvas.parentElement.clientWidth || window.innerWidth - 340;
-    const h = canvas.parentElement.clientHeight || window.innerHeight;
+    const parent = canvas.parentElement;
+    const w = parent.clientWidth  || window.innerWidth;
+    const h = parent.clientHeight || window.innerHeight;
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.setSize(w, h);
+    // false = don't overwrite the canvas CSS (which React sets to width/height 100%)
+    renderer.setSize(w, h, false);
     rendRef.current = renderer;
 
     const scene = new THREE.Scene();
@@ -448,14 +481,25 @@ export default function DebrisMonitor({ onTrack }) {
     scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x334455, size: 0.15 })));
 
     const resize = () => {
-      const w = canvas.clientWidth, h = canvas.clientHeight;
-      renderer.setSize(w, h);
+      // Read dimensions from the parent container — not from the canvas element,
+      // whose CSS dimensions Three.js may have overwritten with px values.
+      const p = canvas.parentElement;
+      if (!p) return;
+      const w = p.clientWidth;
+      const h = p.clientHeight;
+      if (!w || !h) return;
+      renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };
+    // ResizeObserver catches flex-layout changes (panel stacking) that window
+    // resize alone misses.
+    const ro = new ResizeObserver(resize);
+    ro.observe(parent);
     window.addEventListener("resize", resize);
 
     return () => {
+      ro.disconnect();
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animRef.current);
       renderer.dispose();
@@ -679,7 +723,7 @@ export default function DebrisMonitor({ onTrack }) {
 
   const onMouseUp = useCallback((e) => {
     const drag = dragRef.current;
-    if (!drag) return;
+    if (!drag?.start) return;
     drag.active = false;
 
     // If mouse barely moved, treat as a click → raycast

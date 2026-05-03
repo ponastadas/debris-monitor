@@ -372,7 +372,7 @@ class SatelliteSyncCommand extends Command
 
         // Step 1: Upsert satellites (norad_id is the unique key).
         // Chunked to stay under MySQL's 65,535 prepared-statement placeholder limit
-        // (8 columns × 8,000 rows = 64,000 placeholders per batch).
+        // (9 columns × 7,000 rows = 63,000 placeholders per batch).
         $satelliteRows = array_map(fn ($p) => [
             'norad_id'                => $p['norad_id'],
             'name'                    => $p['name'],
@@ -385,7 +385,7 @@ class SatelliteSyncCommand extends Command
             'updated_at'              => $now->toDateTimeString(),
         ], $parsed);
 
-        foreach (array_chunk($satelliteRows, 8000) as $chunk) {
+        foreach (array_chunk($satelliteRows, 7000) as $chunk) {
             DB::table('satellites')->upsert(
                 $chunk,
                 ['norad_id'],

@@ -13,7 +13,7 @@ class SatelliteController extends Controller
         $tle = $this->getLocalTle($noradId) ?? $this->fetchAndCacheTle($noradId);
 
         if (! $tle) {
-            return response()->json(['error' => 'Satellite not found'], 404);
+            return $this->error('NOT_FOUND', "Satellite {$noradId} not found", 404);
         }
 
         return $this->success([
@@ -31,7 +31,7 @@ class SatelliteController extends Controller
         $tle = $this->getLocalTle($noradId) ?? $this->fetchAndCacheTle($noradId);
 
         if (! $tle) {
-            return response()->json(['error' => 'Satellite not found'], 404);
+            return $this->error('NOT_FOUND', "Satellite {$noradId} not found", 404);
         }
 
         return $this->success([
