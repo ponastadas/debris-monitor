@@ -24,17 +24,26 @@ class HandlePublicRequest
 {
     public function handle(Request $request, Closure $next): Response
     {
-        // 1. Bearer token → try Sanctum
-        // If the token is expired or invalid, auth('sanctum')->user() returns null and we fall
-        // through to the guest path below. This is intentional: the globe and tracker remain
-        // usable even with a stale session. A guest quota slot will be consumed in that case,
-        // but 10/day is generous enough that this is acceptable UX over forcing a 401.
+        // 1. Bearer token → try customer Sanctum guard, then admin guard.
+        // If the token is expired or invalid both guards return null and we fall through to the
+        // guest path. This is intentional: the globe/tracker remain usable with a stale session.
         if ($request->bearerToken()) {
             $user = auth('sanctum')->user();
             if ($user) {
                 $request->attributes->set('actor_type', 'user');
                 $request->attributes->set('actor', $user);
                 $request->attributes->set('entitlements', EntitlementService::forUser($user));
+
+                return $next($request);
+            }
+
+            // Admin tokens have tokenable_type=AdminAccount and are rejected by the 'sanctum'
+            // (users) guard above. Try the 'admin' guard so logged-in admins bypass guest limits.
+            $admin = auth('admin')->user();
+            if ($admin) {
+                $request->attributes->set('actor_type', 'admin');
+                $request->attributes->set('actor', $admin);
+                $request->attributes->set('entitlements', EntitlementService::forAdmin());
 
                 return $next($request);
             }

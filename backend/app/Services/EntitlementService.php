@@ -109,6 +109,11 @@ class EntitlementService
         return $base;
     }
 
+    public static function forAdmin(): array
+    {
+        return self::$plans['enterprise'];
+    }
+
     public static function forApiKey(ApiKey $key): array
     {
         $base = self::$plans[$key->tier] ?? self::$plans['free'];
