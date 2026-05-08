@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Satellite;
 use App\Models\TleRecord;
+use App\Services\SpaceTrackClient;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -12,55 +13,57 @@ use Illuminate\Support\Facades\Http;
 class SatelliteSyncCommand extends Command
 {
     protected $signature = 'satellites:sync
+                            {--source=celestrak : Data source: celestrak (default) or spacetrack}
                             {--groups= : Comma-separated CelesTrak group names (default: all configured groups)}
+                            {--incremental : Only fetch recently updated objects + staleness sweep; skips full catalog re-download}
                             {--dry-run : Parse and count without writing to DB}';
 
     protected $description = 'Fetch TLE data from CelesTrak and upsert into local satellite catalog';
 
     /**
-     * CelesTrak TLE groups to sync.
-     * Covers active satellites, major debris fields, and rocket bodies.
-     * Add groups here when the catalog needs expanding.
+     * CelesTrak TLE groups for a full catalog sync (6 requests, non-overlapping).
+     *
+     * 'active' already contains every object in the granular groups (weather,
+     * noaa, starlink, stations, etc.) — listing them separately would just
+     * repeat 20+ round-trips for no extra coverage.  Only groups that are
+     * genuinely disjoint from 'active' are listed here.
      */
     private const DEFAULT_GROUPS = [
-        // Full active catalog — broadest single-call coverage (~15K sats).
-        // Rate-limited to one download per 2h per IP by CelesTrak; when
-        // rate-limited it returns 403 and the group is skipped.  The
-        // granular groups below act as a fallback that fills the catalog
-        // even when 'active' is unavailable.
-        'active',
-        // Granular satellite categories — redundant with 'active' when that
-        // succeeds, but ensure ~4K+ objects are always synced regardless.
-        'stations',
-        'weather',
-        'noaa',
-        'goes',
-        'resource',
-        'sarsat',
-        'dmc',
-        'tdrss',
-        'argos',
-        'planet',
-        'spire',
-        'oneweb',
-        'starlink',
-        'iridium-NEXT',
-        'geo',
-        'last-30-days',
-        'gps-ops',
-        'glo-ops',
-        'galileo',
-        'beidou',
-        'sbas',
-        'amateur',
-        'cubesat',
-        // Debris fields — after satellite groups so object_type is set correctly
+        'active',              // all active payloads (~10K-15K objects)
+        // rocket-bodies group was removed by CelesTrak; rocket bodies in SATCAT get
+        // classified via satcatTypes (R/B → rocket_body) when they appear in other groups
         'fengyun-1c-debris',
         'cosmos-2251-debris',
         'iridium-33-debris',
-        '2019-006',        // ASAT test debris field
-        // Rocket bodies — spent upper stages (~13K objects, essential for conjunction analysis)
-        'rocket-bodies',
+        '2019-006',            // ASAT test debris field
+    ];
+
+    /**
+     * Groups used in incremental mode: only objects catalogued in the last 30 days.
+     * Combined with the staleness sweep this keeps existing TLEs fresh without a
+     * full re-download.
+     */
+    private const INCREMENTAL_GROUPS = [
+        'last-30-days',
+    ];
+
+    /**
+     * Space-Track OBJECT_TYPE values fetched during a full sync.
+     * UNKNOWN and TBA are omitted — they have no useful TLE data.
+     */
+    private const SPACE_TRACK_TYPES = [
+        'PAYLOAD',
+        'ROCKET BODY',
+        'DEBRIS',
+    ];
+
+    /** Maps Space-Track OBJECT_TYPE → our internal object_type. */
+    private const SPACE_TRACK_TYPE_MAP = [
+        'PAYLOAD'      => 'satellite',
+        'ROCKET BODY'  => 'rocket_body',
+        'DEBRIS'       => 'debris',
+        'UNKNOWN'      => null,
+        'TBA'          => null,
     ];
 
     private const CELESTRAK_URL = 'https://celestrak.org/NORAD/elements/gp.php';
@@ -109,32 +112,50 @@ class SatelliteSyncCommand extends Command
         'cosmos-2251-debris' => 'debris',
         'iridium-33-debris'  => 'debris',
         '2019-006'           => 'debris',
-        'rocket-bodies'      => 'rocket_body',
     ];
 
     public function handle(): int
     {
-        $isDryRun = $this->option('dry-run');
-        $groups   = $this->option('groups')
-            ? explode(',', $this->option('groups'))
-            : self::DEFAULT_GROUPS;
+        $isDryRun      = $this->option('dry-run');
+        $isIncremental = $this->option('incremental');
 
-        $this->info('Debris Monitor — Satellite Catalog Sync');
+        if ($this->option('source') === 'spacetrack') {
+            return $this->handleSpaceTrack($isDryRun, $isIncremental);
+        }
+
+        if ($this->option('groups')) {
+            $groups = explode(',', $this->option('groups'));
+        } elseif ($isIncremental) {
+            $groups = self::INCREMENTAL_GROUPS;
+        } else {
+            $groups = self::DEFAULT_GROUPS;
+        }
+
+        $this->info('Debris Monitor — Satellite Catalog Sync' . ($isIncremental ? ' (incremental)' : ''));
         $this->line('Groups: '.implode(', ', $groups));
         $isDryRun && $this->warn('DRY RUN — no data will be written');
         $this->newLine();
 
-        // SATCAT provides per-object type classification (PAY/R/B/DEB/UNK).
-        // Falls back to group-level types when unavailable (e.g. network error).
-        $satcatTypes = $this->fetchSatcatTypes();
-        $this->newLine();
+        // SATCAT per-object classification is only needed on full syncs; incremental
+        // runs only add new objects whose type will already be set by group-level map.
+        $satcatTypes = $isIncremental ? [] : $this->fetchSatcatTypes();
+        if (! $isIncremental) {
+            $this->newLine();
+        }
 
         $totalSatellites = 0;
         $totalTleRecords = 0;
         $now             = now();
+        $first           = true;
 
         foreach ($groups as $group) {
             $group = trim($group);
+
+            if (! $first) {
+                usleep(500_000); // 500ms between requests — respect CelesTrak rate limits
+            }
+            $first = false;
+
             $this->line("Fetching group: <comment>{$group}</comment>");
 
             $parsed = $this->fetchGroup($group);
@@ -182,6 +203,102 @@ class SatelliteSyncCommand extends Command
         $this->runStalenessSweep($isDryRun);
 
         return self::SUCCESS;
+    }
+
+    private function handleSpaceTrack(bool $isDryRun, bool $isIncremental): int
+    {
+        $user = env('SPACE_TRACK_USER');
+        $pass = env('SPACE_TRACK_PASS');
+
+        if (! $user || ! $pass) {
+            $this->error('SPACE_TRACK_USER and SPACE_TRACK_PASS must be set in .env');
+            return self::FAILURE;
+        }
+
+        $client = new SpaceTrackClient();
+
+        $this->info('Debris Monitor — Satellite Catalog Sync (Space-Track)' . ($isIncremental ? ' (incremental)' : ''));
+        $this->line('Logging in to Space-Track.org…');
+
+        if (! $client->login($user, $pass)) {
+            $this->error('Login failed — check SPACE_TRACK_USER / SPACE_TRACK_PASS in .env');
+            return self::FAILURE;
+        }
+
+        $this->line('  Authenticated');
+        $this->newLine();
+
+        $now   = now();
+        $total = 0;
+        $tles  = 0;
+
+        if ($isIncremental) {
+            $since = now()->subDay();
+            $this->line("Fetching GP updates since <comment>{$since->toDateString()}</comment>…");
+
+            $records = $client->fetchGpSince($since);
+
+            if ($records === null) {
+                $this->error('Failed to fetch incremental GP data from Space-Track');
+                return self::FAILURE;
+            }
+
+            $count = count($records);
+            $this->line("  Received {$count} updated objects");
+
+            if (! $isDryRun && $count > 0) {
+                $this->applySpaceTrackTypeMap($records);
+                [$upserted, $tleInserted] = $this->persistBatch($records, $now, 'spacetrack');
+                $this->line("  ✓ Upserted {$upserted} satellites, {$tleInserted} TLE records");
+                $total += $upserted;
+                $tles  += $tleInserted;
+            } else {
+                $total += $count;
+            }
+        } else {
+            foreach (self::SPACE_TRACK_TYPES as $type) {
+                $this->line("Fetching type: <comment>{$type}</comment>…");
+
+                $records = $client->fetchGpByType($type);
+
+                if ($records === null) {
+                    $this->warn("  ✗ Failed to fetch — skipping");
+                    continue;
+                }
+
+                $count = count($records);
+                $this->line("  Received {$count} objects");
+
+                if ($isDryRun || $count === 0) {
+                    $total += $count;
+                    continue;
+                }
+
+                $this->applySpaceTrackTypeMap($records);
+                [$upserted, $tleInserted] = $this->persistBatch($records, $now, 'spacetrack');
+                $this->line("  ✓ Upserted {$upserted} satellites, {$tleInserted} TLE records");
+                $total += $upserted;
+                $tles  += $tleInserted;
+
+                usleep(500_000); // 500ms between type queries
+            }
+        }
+
+        $this->newLine();
+        $uniqueCount = DB::table('tle_records')->where('is_current', true)->count();
+        $this->info("Sync complete — {$uniqueCount} unique objects with current TLE ({$total} parsed, {$tles} TLE records inserted)");
+
+        $this->runStalenessSweep($isDryRun);
+
+        return self::SUCCESS;
+    }
+
+    private function applySpaceTrackTypeMap(array &$records): void
+    {
+        foreach ($records as &$r) {
+            $r['object_type'] = self::SPACE_TRACK_TYPE_MAP[$r['object_type'] ?? ''] ?? null;
+        }
+        unset($r);
     }
 
     /**
@@ -454,11 +571,12 @@ class SatelliteSyncCommand extends Command
     /**
      * Upsert a batch of parsed TLE records into the DB.
      * Each element of $parsed must have an 'object_type' key (nullable string).
+     * When object_type is null the existing DB value is preserved (incremental updates).
      * Returns [satellites upserted, TLE records inserted].
      *
      * @param list<array{name: string, norad_id: string, line1: string, line2: string, object_type: string|null}> $parsed
      */
-    private function persistBatch(array $parsed, Carbon $now): array
+    private function persistBatch(array $parsed, Carbon $now, string $source = 'celestrak'): array
     {
         // Deduplicate by norad_id within the batch — a CelesTrak group file can
         // occasionally contain the same satellite twice (e.g. active group overlaps
@@ -477,7 +595,12 @@ class SatelliteSyncCommand extends Command
         // Step 1: Upsert satellites (norad_id is the unique key).
         // Chunked to stay under MySQL's 65,535 prepared-statement placeholder limit
         // (9 columns × 7,000 rows = 63,000 placeholders per batch).
-        $satelliteRows = array_map(function ($p) use ($now) {
+        // When object_type is null (e.g. incremental fetch with mixed types), skip updating
+        // it so the existing classification is preserved.
+        $withType    = array_filter($parsed, fn ($p) => ($p['object_type'] ?? null) !== null);
+        $withoutType = array_filter($parsed, fn ($p) => ($p['object_type'] ?? null) === null);
+
+        $makeRow = function (array $p) use ($now, $source): array {
             $type = $p['object_type'] ?? null;
             return [
                 'norad_id'                => $p['norad_id'],
@@ -485,18 +608,27 @@ class SatelliteSyncCommand extends Command
                 'object_type'             => $type,
                 'international_designator' => $p['international_designator'] ?? null,
                 'is_active'               => $type !== 'debris' && $type !== 'rocket_body',
-                'catalog_source'          => 'celestrak',
+                'catalog_source'          => $source,
                 'last_seen_at'            => $now->toDateTimeString(),
                 'created_at'              => $now->toDateTimeString(),
-                'updated_at'             => $now->toDateTimeString(),
+                'updated_at'              => $now->toDateTimeString(),
             ];
-        }, $parsed);
+        };
 
-        foreach (array_chunk($satelliteRows, 7000) as $chunk) {
+        foreach (array_chunk(array_values($withType), 7000) as $chunk) {
             DB::table('satellites')->upsert(
-                $chunk,
+                array_map($makeRow, $chunk),
                 ['norad_id'],
                 ['name', 'object_type', 'international_designator', 'is_active', 'catalog_source', 'last_seen_at', 'updated_at']
+            );
+        }
+
+        foreach (array_chunk(array_values($withoutType), 7000) as $chunk) {
+            DB::table('satellites')->upsert(
+                array_map($makeRow, $chunk),
+                ['norad_id'],
+                ['name', 'international_designator', 'is_active', 'catalog_source', 'last_seen_at', 'updated_at']
+                // object_type intentionally omitted — preserve existing DB classification
             );
         }
 
@@ -528,7 +660,7 @@ class SatelliteSyncCommand extends Command
                 'line1'        => $p['line1'],
                 'line2'        => $p['line2'],
                 'epoch_at'     => $this->parseEpoch($p['line1']),
-                'source'       => 'celestrak',
+                'source'       => $source,
                 'fetched_at'   => $now->toDateTimeString(),
                 'is_current'   => true,
                 'created_at'   => $now->toDateTimeString(),

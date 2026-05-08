@@ -13,7 +13,7 @@ return new class extends Migration
             $table->foreignId('satellite_id')->constrained()->cascadeOnDelete();
             $table->string('line1', 80);
             $table->string('line2', 80);
-            $table->timestamp('epoch_at')->nullable();
+            $table->dateTime('epoch_at')->nullable();
             $table->string('source', 30)->default('celestrak');
             $table->timestamp('fetched_at');
             $table->boolean('is_current')->default(true);

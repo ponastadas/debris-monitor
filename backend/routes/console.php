@@ -23,6 +23,12 @@ Schedule::command('conjunctions:sync')
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/conjunctions.log'));
 
+// Daily database backup — kept for 7 days, stored in storage/app/backups/.
+Schedule::command('db:backup')
+    ->dailyAt('02:00')
+    ->withoutOverlapping()
+    ->appendOutputTo(storage_path('logs/db-backup.log'));
+
 // SGP4-based conjunction screening — runs as a fallback/supplement to CDM sync.
 // Screens watched satellites against local debris catalog using TlePropagator.
 // Run the queue worker alongside this so notifications are dispatched promptly:

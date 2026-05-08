@@ -1,4 +1,4 @@
-.PHONY: up down setup sync-catalog sync-conjunctions seed-conjunctions test lint logs shell shell-backend shell-db
+.PHONY: up down setup sync-catalog sync-conjunctions seed-conjunctions test lint logs shell shell-backend shell-db backup restore
 
 # ── Start everything ──────────────────────────────────────────
 up:
@@ -32,6 +32,9 @@ setup:
 # Run this after make setup if catalog is empty, or to refresh stale TLE data.
 sync-catalog:
 	docker compose -f docker-compose.local.yml run --rm backend php artisan satellites:sync
+
+sync-catalog-spacetrack:
+	docker compose -f docker-compose.local.yml run --rm backend php artisan satellites:sync --source=spacetrack
 
 # Fetch real conjunction data from Space-Track CDM (requires SPACE_TRACK_USER/PASS in .env).
 # Exits cleanly with a warning if credentials are not set.
@@ -74,6 +77,14 @@ shell shell-backend:
 
 shell-db:
 	docker compose -f docker-compose.local.yml exec db mysql -u debris -psecret debris_local
+
+# ── DB backup / restore ───────────────────────────────────────
+# Always runs inside the backend container where mysqldump points to the right server.
+backup:
+	docker compose -f docker-compose.local.yml exec backend php artisan db:backup
+
+restore:
+	docker compose -f docker-compose.local.yml exec backend php artisan db:restore $(file)
 
 # ── Artisan shortcut ──────────────────────────────────────────
 artisan:

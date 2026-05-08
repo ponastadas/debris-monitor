@@ -6,7 +6,7 @@ RUN composer install --no-dev --no-interaction --no-scripts --prefer-dist --opti
 
 # Stage 2: Production
 FROM php:8.3-fpm-alpine AS production
-RUN apk add --no-cache nginx supervisor curl \
+RUN apk add --no-cache nginx supervisor curl mysql-client \
     && docker-php-ext-install pdo pdo_mysql opcache
 WORKDIR /var/www/html
 COPY --from=vendor /app/vendor ./vendor
@@ -18,7 +18,7 @@ EXPOSE 80
 
 # Stage 3: Development (hot reload)
 FROM php:8.3-cli-alpine AS development
-RUN apk add --no-cache curl \
+RUN apk add --no-cache curl mysql-client \
     && docker-php-ext-install pdo pdo_mysql \
     && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
     && composer --version
