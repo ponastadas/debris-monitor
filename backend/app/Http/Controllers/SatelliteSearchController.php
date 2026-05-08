@@ -14,7 +14,6 @@ class SatelliteSearchController extends Controller
     /**
      * Common-name → NORAD ID aliases for satellites whose TLE names have no
      * recognisable relation to the popular name a user would type.
-     * Keep minimal — strip-normalisation handles most separator variations.
      */
     private const ALIASES = [
         'hubble'   => '20580',  // HST
@@ -31,7 +30,9 @@ class SatelliteSearchController extends Controller
      * GET /api/satellites/search?q=1998-067A   (international designator)
      * GET /api/satellites/search?q=25544       (NORAD ID)
      *
-     * Local DB only — results are cached for 300 seconds.
+     * Primary strategy: MySQL FULLTEXT MATCH AGAINST (milliseconds).
+     * Falls back to LIKE for queries shorter than the FULLTEXT min-token size (3).
+     * Results are cached for 300 seconds.
      */
     public function __invoke(Request $request): JsonResponse
     {
@@ -77,10 +78,11 @@ class SatelliteSearchController extends Controller
     }
 
     /**
-     * Text query: four strategies merged in priority order.
+     * Text search via FULLTEXT for queries >= 3 chars, LIKE fallback for shorter ones.
      *
-     * 1. Standard prefix/substring LIKE
-     * 2. Strip-normalised LIKE — "goes16" matches "GOES 16" (uses generated column)
+     * Priority order:
+     * 1. FULLTEXT on (name, name_normalized) — handles "NOAA 19", "goes16", "ISS"
+     * 2. LIKE fallback — only for 2-char queries that FULLTEXT minimum-token skips
      * 3. International designator LIKE — "1998-067A" finds ISS
      * 4. Alias prepend — "hubble" → HST
      */
@@ -89,46 +91,21 @@ class SatelliteSearchController extends Controller
         $seen    = [];
         $results = [];
 
-        // Strategy 1: standard name LIKE (prefix scored above substring)
-        $standard = Satellite::whereHas('currentTle')
-            ->where(function ($qb) use ($q) {
-                $qb->where('name', 'like', "{$q}%")
-                   ->orWhere('name', 'like', "%{$q}%");
-            })
-            ->orderByRaw("CASE WHEN name LIKE ? THEN 0 ELSE 1 END", ["{$q}%"])
-            ->limit(self::MAX_RESULTS)
-            ->get(['norad_id', 'name']);
-
-        foreach ($standard as $s) {
-            if (! isset($seen[$s->norad_id])) {
-                $seen[$s->norad_id] = true;
-                $results[]          = ['norad_id' => $s->norad_id, 'name' => $s->name];
+        // Strategy 1: FULLTEXT on name + name_normalized (fast, uses index)
+        if (strlen($q) >= 3) {
+            foreach ($this->searchByFullText($q) as $r) {
+                $seen[$r['norad_id']] = true;
+                $results[]            = $r;
             }
         }
 
-        // Strategy 2: strip-normalised match (uses name_normalized generated column)
-        if (count($results) < self::MAX_RESULTS) {
-            $stripped = $this->strip($q);
-
-            if (strlen($stripped) >= 2) {
-                $norm = Satellite::whereHas('currentTle')
-                ->where(function ($qb) use ($stripped) {
-                    $qb->where('name_normalized', 'like', "{$stripped}%")
-                       ->orWhere('name_normalized', 'like', "%{$stripped}%");
-                })
-                ->orderByRaw(
-                    "CASE WHEN name_normalized LIKE ? THEN 0 ELSE 1 END",
-                    ["{$stripped}%"]
-                )
-                ->limit(self::MAX_RESULTS)
-                ->get(['norad_id', 'name']);
-
-                foreach ($norm as $s) {
-                    if (! isset($seen[$s->norad_id])) {
-                        $seen[$s->norad_id] = true;
-                        $results[]          = ['norad_id' => $s->norad_id, 'name' => $s->name];
-                    }
-                }
+        // Strategy 2: LIKE fallback — only for 2-char queries (FULLTEXT skips tokens < 3 chars)
+        // or when FULLTEXT found nothing at all. Never supplement a non-empty FULLTEXT result
+        // with LIKE, as that would run an un-indexed full-table scan and kill latency.
+        if (empty($results)) {
+            foreach ($this->searchByLike($q, $seen) as $r) {
+                $seen[$r['norad_id']] = true;
+                $results[]            = $r;
             }
         }
 
@@ -165,6 +142,65 @@ class SatelliteSearchController extends Controller
     }
 
     /**
+     * FULLTEXT search on name + name_normalized columns.
+     *
+     * Converts the query to boolean-mode prefix terms: "NOAA 19" → "NOAA* 19*".
+     * This handles both "iss" → ISS and "goes16" → "GOES 16" (via name_normalized).
+     * Relevance-ranked: exact-prefix matches score higher than mid-word matches.
+     *
+     * Minimum effective token length is 3 (MySQL innodb_ft_min_token_size default).
+     *
+     * @return list<array{norad_id: string, name: string}>
+     */
+    private function searchByFullText(string $q): array
+    {
+        $terms   = preg_split('/\s+/', trim($q), -1, PREG_SPLIT_NO_EMPTY);
+        // Use AND mode (+term*): every typed word must appear in the name.
+        // "NOAA 19" → "+NOAA* +19*" finds only NOAA 19, not every satellite with "19".
+        $ftQuery = '+' . implode('* +', $terms) . '*';
+
+        return Satellite::whereHas('currentTle')
+            ->whereRaw('MATCH(name, name_normalized) AGAINST(? IN BOOLEAN MODE)', [$ftQuery])
+            ->orderByRaw(
+                // Primary: FULLTEXT relevance. Secondary: boost names that actually start with the query.
+                'MATCH(name, name_normalized) AGAINST(? IN BOOLEAN MODE) DESC, CASE WHEN name LIKE ? THEN 0 ELSE 1 END ASC',
+                [$ftQuery, "{$q}%"]
+            )
+            ->limit(self::MAX_RESULTS)
+            ->get(['norad_id', 'name'])
+            ->map(fn ($s) => ['norad_id' => $s->norad_id, 'name' => $s->name])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * LIKE fallback — used only when FULLTEXT is skipped (< 3-char query) or returns too few results.
+     *
+     * @param  array<string,bool>  $skip
+     * @return list<array{norad_id: string, name: string}>
+     */
+    private function searchByLike(string $q, array $skip): array
+    {
+        $rows = Satellite::whereHas('currentTle')
+            ->where(function ($qb) use ($q) {
+                $qb->where('name', 'like', "{$q}%")
+                   ->orWhere('name', 'like', "%{$q}%");
+            })
+            ->orderByRaw("CASE WHEN name LIKE ? THEN 0 ELSE 1 END", ["{$q}%"])
+            ->limit(self::MAX_RESULTS)
+            ->get(['norad_id', 'name']);
+
+        $out = [];
+        foreach ($rows as $s) {
+            if (! isset($skip[$s->norad_id])) {
+                $out[] = ['norad_id' => $s->norad_id, 'name' => $s->name];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array<string,bool>  $skip
      * @return list<array{norad_id: string, name: string}>
      */
@@ -193,11 +229,6 @@ class SatelliteSearchController extends Controller
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private function strip(string $s): string
-    {
-        return preg_replace('/[^a-z0-9]/', '', strtolower($s));
-    }
 
     private function resolveAlias(string $q): ?string
     {
