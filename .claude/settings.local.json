@@ -85,7 +85,19 @@
       "Bash(curl -s \"http://localhost:8000/api/satellites/search?q=60554\")",
       "Bash(curl -s \"http://localhost:8000/api/satellites/60554\")",
       "Bash(curl -s \"http://localhost:8000/api/satellites/search?q=59120\")",
-      "Bash(curl -s \"http://localhost:8000/api/satellites/59120\")"
+      "Bash(curl -s \"http://localhost:8000/api/satellites/59120\")",
+      "Bash(docker run *)",
+      "Bash(make test-filter *)",
+      "Bash(curl *)",
+      "Bash(getent hosts *)",
+      "Bash(mysqldump --version)",
+      "Bash(mysql --version)",
+      "Bash(mysql *)",
+      "Bash(make backup *)",
+      "Bash(make restore *)",
+      "Bash(git -C /mnt/c/projects/debris-monitor status)",
+      "Bash(git -C /mnt/c/projects/debris-monitor diff --stat)",
+      "Bash(git *)"
     ]
   }
 }

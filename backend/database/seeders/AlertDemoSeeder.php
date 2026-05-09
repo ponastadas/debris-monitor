@@ -14,9 +14,9 @@ use Illuminate\Support\Facades\Hash;
  *
  * Creates three demo users that cover all Alerts UI states:
  *
- *   demo@debris.monitor  / password  (starter)  → watched sats + alerts
- *   free@debris.monitor  / password  (free)      → watched sat, no alerts visible
- *   empty@debris.monitor / password  (starter)   → no watched satellites
+ *   demo@satview.eu  / password  (starter)  → watched sats + alerts
+ *   free@satview.eu  / password  (free)      → watched sat, no alerts visible
+ *   empty@satview.eu / password  (starter)   → no watched satellites
  *
  * Safe to re-run: existing demo users are reused; alerts are recreated only
  * when no upcoming alerts exist for their primary NORAD IDs (i.e. after expiry).
@@ -33,7 +33,7 @@ class AlertDemoSeeder extends Seeder
         // ── 1. Demo user (starter) — watched sats + alerts ────────────────
 
         $demo = User::firstOrCreate(
-            ['email' => 'demo@debris.monitor'],
+            ['email' => 'demo@satview.eu'],
             ['name' => 'Demo User', 'password' => Hash::make('password'), 'status' => 'active'],
         );
 
@@ -147,12 +147,12 @@ class AlertDemoSeeder extends Seeder
             ]);
         }
 
-        $this->command->info('  [demo]  demo@debris.monitor (starter) — ISS + Hubble watched, 5 alerts');
+        $this->command->info('  [demo]  demo@satview.eu (starter) — ISS + Hubble watched, 5 alerts');
 
         // ── 2. Free user — sees gate, can't view alerts ────────────────────
 
         $free = User::firstOrCreate(
-            ['email' => 'free@debris.monitor'],
+            ['email' => 'free@satview.eu'],
             ['name' => 'Free User', 'password' => Hash::make('password'), 'status' => 'active'],
         );
 
@@ -163,12 +163,12 @@ class AlertDemoSeeder extends Seeder
             ['name' => 'ISS (ZARYA)'],
         );
 
-        $this->command->info('  [demo]  free@debris.monitor (free) — ISS watched, upgrade gate shown');
+        $this->command->info('  [demo]  free@satview.eu (free) — ISS watched, upgrade gate shown');
 
         // ── 3. Starter user with no watched satellites ────────────────────
 
         $empty = User::firstOrCreate(
-            ['email' => 'empty@debris.monitor'],
+            ['email' => 'empty@satview.eu'],
             ['name' => 'Empty User', 'password' => Hash::make('password'), 'status' => 'active'],
         );
 
@@ -182,6 +182,6 @@ class AlertDemoSeeder extends Seeder
             ],
         );
 
-        $this->command->info('  [demo]  empty@debris.monitor (starter) — no watched sats, empty alerts state');
+        $this->command->info('  [demo]  empty@satview.eu (starter) — no watched sats, empty alerts state');
     }
 }

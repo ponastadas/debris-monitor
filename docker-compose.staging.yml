@@ -1,18 +1,129 @@
+# Staging compose file — standalone (not an override).
+# Used on the staging server: docker compose -f docker-compose.staging.yml --project-name satview-staging up -d
+#
+# Required server .env vars:
+#   BACKEND_IMAGE, FRONTEND_IMAGE, DB_ROOT_PASSWORD, ACME_EMAIL
+# DB_DATABASE defaults to satview_staging if not set — keeps staging isolated from production.
+
 services:
 
+  traefik:
+    image: traefik:v3
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.constraints=label(`com.docker.compose.project`, `satview-staging`)"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - web
+
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY}-backend:staging
+    image: ${BACKEND_IMAGE:-ghcr.io/ponastadas/debris-monitor-backend:staging}
+    restart: unless-stopped
+    env_file: .env
     environment:
       APP_ENV: staging
-      APP_DEBUG: "true"           # visible errors on staging only
+      APP_DEBUG: "false"
+    volumes:
+      - storage_app:/var/www/html/storage/app
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+      - web
     labels:
-      - "traefik.http.routers.api.rule=Host(`staging.debris-monitor.com`) && PathPrefix(`/api`)"
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`staging.satview.eu`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=le"
+      - "traefik.http.routers.api.priority=10"
+      - "traefik.http.services.api.loadbalancer.server.port=80"
 
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY}-frontend:staging
+    image: ${FRONTEND_IMAGE:-ghcr.io/ponastadas/debris-monitor-frontend:staging}
+    restart: unless-stopped
+    networks:
+      - web
     labels:
-      - "traefik.http.routers.app.rule=Host(`staging.debris-monitor.com`)"
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`staging.satview.eu`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=le"
+      - "traefik.http.routers.app.priority=1"
+      - "traefik.http.services.app.loadbalancer.server.port=80"
 
   db:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
     environment:
-      MYSQL_DATABASE: ${DB_DATABASE}_staging   # isolated staging DB
+      MYSQL_DATABASE: ${DB_DATABASE:-satview_staging}
+      MYSQL_USER: ${DB_USERNAME:-satview}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  scheduler:
+    image: ${BACKEND_IMAGE:-ghcr.io/ponastadas/debris-monitor-backend:staging}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_ENV: staging
+      APP_DEBUG: "false"
+    command: >
+      sh -c "while true; do
+        php artisan schedule:run --no-interaction >> /dev/null 2>&1;
+        sleep 60;
+      done"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+  worker:
+    image: ${BACKEND_IMAGE:-ghcr.io/ponastadas/debris-monitor-backend:staging}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_ENV: staging
+      APP_DEBUG: "false"
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+volumes:
+  db_data:
+  storage_app:
+  letsencrypt:
+
+networks:
+  internal:
+  web:
+    external: true

@@ -32,7 +32,7 @@ export default function AuthLayout({ children, title, subtitle }) {
             textTransform: 'uppercase',
             marginBottom: 4,
           }}>
-            ◈ DEBRIS MONITOR
+            ◈ SATVIEW
           </div>
           <div style={{ color: '#8b949e', fontSize: 11, letterSpacing: '0.15em' }}>
             ORBITAL CONJUNCTION INTELLIGENCE

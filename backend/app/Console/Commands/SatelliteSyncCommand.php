@@ -131,7 +131,7 @@ class SatelliteSyncCommand extends Command
             $groups = self::DEFAULT_GROUPS;
         }
 
-        $this->info('Debris Monitor — Satellite Catalog Sync' . ($isIncremental ? ' (incremental)' : ''));
+        $this->info('SatView — Satellite Catalog Sync' . ($isIncremental ? ' (incremental)' : ''));
         $this->line('Groups: '.implode(', ', $groups));
         $isDryRun && $this->warn('DRY RUN — no data will be written');
         $this->newLine();
@@ -217,7 +217,7 @@ class SatelliteSyncCommand extends Command
 
         $client = new SpaceTrackClient();
 
-        $this->info('Debris Monitor — Satellite Catalog Sync (Space-Track)' . ($isIncremental ? ' (incremental)' : ''));
+        $this->info('SatView — Satellite Catalog Sync (Space-Track)' . ($isIncremental ? ' (incremental)' : ''));
         $this->line('Logging in to Space-Track.org…');
 
         if (! $client->login($user, $pass)) {

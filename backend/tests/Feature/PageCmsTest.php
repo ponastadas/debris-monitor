@@ -95,7 +95,7 @@ it('public show returns a published page with content', function () {
         'title'            => 'Privacy Policy',
         'excerpt'          => 'Our privacy policy.',
         'content'          => '# Privacy\nWe respect your data.',
-        'meta_title'       => 'Privacy | Debris Monitor',
+        'meta_title'       => 'Privacy | SatView',
         'meta_description' => 'Our privacy policy description.',
     ]);
 
@@ -104,7 +104,7 @@ it('public show returns a published page with content', function () {
          ->assertJsonPath('data.title', 'Privacy Policy')
          ->assertJsonPath('data.slug', 'privacy-policy')
          ->assertJsonPath('data.excerpt', 'Our privacy policy.')
-         ->assertJsonPath('data.meta_title', 'Privacy | Debris Monitor')
+         ->assertJsonPath('data.meta_title', 'Privacy | SatView')
          ->assertJsonPath('data.meta_description', 'Our privacy policy description.');
 
     $content = $this->getJson('/api/pages/privacy-policy')->json('data.content');
@@ -139,7 +139,7 @@ it('admin can create a page with all fields', function () {
              'slug'             => 'new-page',
              'excerpt'          => 'A short description.',
              'content'          => '# New Page\nContent here.',
-             'meta_title'       => 'New Page | Debris Monitor',
+             'meta_title'       => 'New Page | SatView',
              'meta_description' => 'SEO description.',
          ])
          ->assertStatus(201)

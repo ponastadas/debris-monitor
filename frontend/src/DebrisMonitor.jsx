@@ -771,7 +771,7 @@ export default function DebrisMonitor({ onTrack }) {
           <div className="corner-hud bl" /><div className="corner-hud br" />
           <div className="fps-badge">{fps} FPS · {counts.total.toLocaleString()} OBJECTS</div>
           <div className="globe-label">
-            DEBRIS MONITOR ·{" "}
+            SATVIEW ·{" "}
             {dataSource === 'local'     && "LOCAL CATALOG"}
             {dataSource === 'celestrak' && "CELESTRAK DATA"}
             {!dataSource               && "REAL-TIME CATALOG"}
@@ -779,7 +779,7 @@ export default function DebrisMonitor({ onTrack }) {
 
           {loading.active && (
             <div className="loading-overlay">
-              <div className="loading-title">DEBRIS MONITOR</div>
+              <div className="loading-title">SATVIEW</div>
               <div className="loading-bar-wrap">
                 <div className="loading-bar" style={{ width: `${loading.pct}%` }} />
               </div>
@@ -791,7 +791,7 @@ export default function DebrisMonitor({ onTrack }) {
         {/* Side panel */}
         <div className="panel">
           <div className="panel-header">
-            <div className="panel-title">DEBRIS MONITOR</div>
+            <div className="panel-title">SATVIEW</div>
             <div className="panel-sub">REAL-TIME CATALOG · {counts.total.toLocaleString()} OBJECTS</div>
           </div>
 

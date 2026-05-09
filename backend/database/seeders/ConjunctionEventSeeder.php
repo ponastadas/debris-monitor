@@ -131,10 +131,10 @@ class ConjunctionEventSeeder extends Seeder
         $this->command->info('  [CDM]   ' . count(self::DEMO_EVENTS) . ' demo conjunction events upserted.');
 
         // ── 2. Create demo user with CDM-backed alerts ────────────────────
-        // Re-use the same demo@debris.monitor user from AlertDemoSeeder.
+        // Re-use the same demo@satview.eu user from AlertDemoSeeder.
 
         $demo = User::firstOrCreate(
-            ['email' => 'demo@debris.monitor'],
+            ['email' => 'demo@satview.eu'],
             ['name' => 'Demo User', 'password' => Hash::make('password'), 'status' => 'active'],
         );
 
@@ -200,6 +200,6 @@ class ConjunctionEventSeeder extends Seeder
             }
         }
 
-        $this->command->info('  [CDM]   Conjunction alerts generated for demo@debris.monitor (ISS + Hubble).');
+        $this->command->info('  [CDM]   Conjunction alerts generated for demo@satview.eu (ISS + Hubble).');
     }
 }

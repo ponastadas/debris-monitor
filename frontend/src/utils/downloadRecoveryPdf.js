@@ -14,7 +14,7 @@ export function downloadRecoveryCodesPdf(codes) {
   doc.setFont('courier', 'bold');
   doc.setFontSize(15);
   doc.setTextColor(0, 150, 160);
-  doc.text('DEBRIS MONITOR', 20, 26);
+  doc.text('SATVIEW', 20, 26);
 
   doc.setFontSize(12);
   doc.setTextColor(30, 30, 30);
@@ -52,10 +52,10 @@ export function downloadRecoveryCodesPdf(codes) {
   doc.setTextColor(160, 160, 160);
   doc.setFontSize(8);
   doc.text(
-    'These codes are not stored in plaintext by Debris Monitor.',
+    'These codes are not stored in plaintext by SatView.',
     20,
     warningY + 18,
   );
 
-  doc.save(`debris-monitor-recovery-codes-${date}.pdf`);
+  doc.save(`satview-recovery-codes-${date}.pdf`);
 }

@@ -33,9 +33,9 @@ export default function Page() {
   // Update document title for SEO
   useEffect(() => {
     if (page) {
-      document.title = page.meta_title || `${page.title} — Debris Monitor`;
+      document.title = page.meta_title || `${page.title} — SatView`;
     }
-    return () => { document.title = 'Debris Monitor'; };
+    return () => { document.title = 'SatView'; };
   }, [page]);
 
   return (
@@ -79,7 +79,7 @@ export default function Page() {
             fontFamily: "'Orbitron', sans-serif",
             fontSize: 11, fontWeight: 700, letterSpacing: '0.25em', color: '#00d4ff',
           }}>
-            ◈ DEBRIS MONITOR
+            ◈ SATVIEW
           </span>
         </Link>
       </div>

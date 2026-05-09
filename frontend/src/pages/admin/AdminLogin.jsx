@@ -139,7 +139,7 @@ export default function AdminLogin() {
             color: '#00d4ff',
             marginBottom: 4,
           }}>
-            ◈ DEBRIS MONITOR
+            ◈ SATVIEW
           </div>
           <div style={{ fontSize: 9, color: '#484f58', letterSpacing: '0.2em' }}>
             {STEP_SUBTITLES[step]}

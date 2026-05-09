@@ -1,34 +1,72 @@
+# Production compose file.
+# Image tags are set by the CD pipeline via BACKEND_IMAGE / FRONTEND_IMAGE env vars.
+# Default tags (latest) are used for manual docker compose commands on the server.
+#
+# Required server .env vars (in addition to normal Laravel vars):
+#   BACKEND_IMAGE, FRONTEND_IMAGE, DB_ROOT_PASSWORD, ACME_EMAIL
+
 services:
 
+  traefik:
+    image: traefik:v3
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      # HTTP → HTTPS redirect (global, before any router rules)
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      # Let's Encrypt via HTTP challenge
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - web
+
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY}-backend:latest
+    image: ${BACKEND_IMAGE:-ghcr.io/ponastadas/debris-monitor-backend:latest}
     restart: unless-stopped
     env_file: .env
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
     volumes:
-      - db_backups:/var/www/html/storage/app/backups
-    networks:
-      - internal
-      - web
+      - storage_app:/var/www/html/storage/app
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - internal
+      - web
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=Host(`debris-monitor.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.api.rule=Host(`satview.eu`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
       - "traefik.http.routers.api.tls.certresolver=le"
+      - "traefik.http.routers.api.priority=10"
+      - "traefik.http.services.api.loadbalancer.server.port=80"
 
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY}-frontend:latest
+    image: ${FRONTEND_IMAGE:-ghcr.io/ponastadas/debris-monitor-frontend:latest}
     restart: unless-stopped
     networks:
       - web
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(`debris-monitor.com`)"
+      - "traefik.http.routers.app.rule=Host(`satview.eu`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
       - "traefik.http.routers.app.tls.certresolver=le"
+      - "traefik.http.routers.app.priority=1"
+      - "traefik.http.services.app.loadbalancer.server.port=80"
 
   db:
     image: mysql:8.0
@@ -49,30 +87,44 @@ services:
       timeout: 5s
       retries: 5
 
-  traefik:
-    image: traefik:v3
+  # Runs `php artisan schedule:run` every 60 s.
+  # Covers: satellites:sync (6h), conjunctions:sync (6h), conjunctions:check (6h), db:backup (daily 02:00)
+  scheduler:
+    image: ${BACKEND_IMAGE:-ghcr.io/ponastadas/debris-monitor-backend:latest}
     restart: unless-stopped
-    command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.le.acme.httpchallenge=true"
-      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - letsencrypt:/letsencrypt
+    env_file: .env
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+    command: >
+      sh -c "while true; do
+        php artisan schedule:run --no-interaction >> /dev/null 2>&1;
+        sleep 60;
+      done"
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
-      - web
+      - internal
+
+  # Processes queued jobs (ConjunctionAlertNotification dispatches via queue).
+  worker:
+    image: ${BACKEND_IMAGE:-ghcr.io/ponastadas/debris-monitor-backend:latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
 
 volumes:
   db_data:
-  db_backups:
+  storage_app:
   letsencrypt:
 
 networks:

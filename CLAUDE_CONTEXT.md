@@ -1,11 +1,11 @@
-# Debris Monitor — Project Context
-> Last updated: 2026-05-03 (session 30 — admin public-endpoint access + catalog classification overhaul: HandlePublicRequest now falls through auth('sanctum') → auth('admin') so admin tokens work on satellite/conjunction endpoints; EntitlementService::forAdmin() returns enterprise-level entitlements; client.js sends dm_admin_token as Bearer + _isAdminToken flag suppresses 401 redirect on customer-only endpoints; satellites:sync fetches SATCAT CSV (celestrak.org/pub/satcat.csv) at start to build NORAD→type map (PAY→satellite, R/B→rocket_body, DEB→debris, UNK→null) — each parsed object gets SATCAT type overriding group-level fallback; CatalogController: norad_id added to response, ?types=unknown uses whereNull; AdminDashboardController by_type keys normalised (rocket_body→rocket); sync count now reports true unique DB count; GuestAccessTest + SatelliteCatalogTest + SatelliteSyncTest extended; vite.config.js worker:{format:'es'} fixes satellite.js WASM top-level-await build error; 266 backend + 44 frontend tests pass).
+# SatView — Project Context
+> Last updated: 2026-05-08 (session 32 — DevOps overhaul: backend Dockerfile now has CMD [supervisord] to run nginx+php-fpm (was missing — containers only started php-fpm); backend/docker/nginx.conf + supervisord.conf added; docker-compose.yml: image vars BACKEND_IMAGE/FRONTEND_IMAGE (SHA-tagged by CD), scheduler + worker services added, Traefik HTTP→HTTPS redirect, service port labels, domain satview.eu; docker-compose.staging.yml: rewritten as complete standalone file with all services; ci.yml: permissions, concurrency, removed unused VITE_API_URL_STAGING secret; cd.yml: triggers via workflow_run (CI must pass first), SHA-tagged deploys (sha-<7chars>), SCP compose file to server, GHCR login on server, DB backup before up, set -euo pipefail, health check loop, 72h image prune; docs/deployment.md created; 266 backend + 44 frontend tests pass).
 
 ---
 
 ## What This Project Is
 
-**Debris Monitor** — a satellite conjunction risk monitoring platform. Dual purpose:
+**SatView** — a satellite conjunction risk monitoring platform. Dual purpose:
 1. **CI/CD demo** for annual professional goal (show lint → test → Docker build → staging/prod deploy)
 2. **Passive income SaaS** (API-first, monetized via Stripe — currently mock mode)
 
@@ -20,7 +20,7 @@ Real product, real pipeline, real data. Not a toy.
 | spaceaware.io (Lyteworx) | Defense / Gov | Gated, no developer API |
 | SpaceAware (Riskaware) | Enterprise | Complex, expensive |
 | KeepTrack.space | Hobbyists | No risk scoring, CC BY-NC, no webhooks |
-| **Debris Monitor** | **Developers + Startups** | **Clean API, webhooks, freemium, commercial OK** |
+| **SatView** | **Developers + Startups** | **Clean API, webhooks, freemium, commercial OK** |
 
 ---
 
@@ -658,21 +658,31 @@ register, login (returns bearer token), logout, me (get/update), password change
 - `db` — MySQL 8 with healthcheck
 - `mailpit` — catches all Laravel emails (UI at :8025)
 
-### docker-compose.staging.yml
-- `:staging` image tags, `APP_DEBUG=true`, isolated DB name
+### docker-compose.staging.yml (standalone — staging server)
+- Complete standalone file (not an override): Traefik + backend + frontend + db + scheduler + worker
+- Images: `${BACKEND_IMAGE:-...:staging}` / `${FRONTEND_IMAGE:-...:staging}` (set to SHA tag by CD)
+- `APP_ENV=staging`, `APP_DEBUG=false`, domain `staging.satview.eu`
+- Isolated DB: `${DB_DATABASE:-satview_staging}`
+- `--project-name satview-staging` avoids container name collisions
 
 ### docker-compose.yml (production)
-- Traefik reverse proxy, Let's Encrypt TLS auto-provisioning
-- `:latest` image tags, `APP_DEBUG=false`
+- Same structure as staging: Traefik + backend + frontend + db + scheduler + worker
+- Images: `${BACKEND_IMAGE:-...:latest}` / `${FRONTEND_IMAGE:-...:latest}` (set to SHA tag by CD)
+- Traefik: HTTP→HTTPS global redirect, Let's Encrypt ACME, `traefik.http.services.*.loadbalancer.server.port=80`
+- `scheduler` service: `while true; do php artisan schedule:run; sleep 60; done` — runs all scheduled commands (satellites:sync, conjunctions:sync, conjunctions:check, db:backup)
+- `worker` service: `php artisan queue:work` — processes queued jobs (ConjunctionAlertNotification)
+- `storage_app` named volume: persists `storage/app/` (file uploads, backups) across deploys
 
 ### Backend Dockerfile (multi-stage)
-- `vendor` stage: Composer install
-- `production` stage: PHP-FPM + Nginx + Supervisor (Alpine)
-- `development` stage: PHP CLI dev server (Composer installed via curl)
+- `vendor` stage: Composer install (isolated — no app source in cache layer)
+- `production` stage: PHP-FPM + Nginx + Supervisor (Alpine); `docker/nginx.conf` → `/etc/nginx/http.d/default.conf`; `docker/supervisord.conf` starts php-fpm (priority 10) then nginx (priority 20); `CMD ["/usr/bin/supervisord"]`; HEALTHCHECK with `--start-period=15s`
+- `development` stage: PHP CLI dev server (`php artisan serve`)
+- `backend/docker/nginx.conf`: root `/var/www/html/public`, PHP-FPM on `127.0.0.1:9000`, gzip, Docker stdout/stderr logging
+- `backend/docker/supervisord.conf`: nodaemon, both programs log to stdout/stderr
 
 ### Frontend Dockerfile (multi-stage)
-- `builder` stage: `npm ci` + `vite build`
-- `production` stage: Nginx serving `/dist`
+- `builder` stage: `npm ci` + `vite build` — no build-time API URL (frontend uses relative `baseURL: '/api'`; Traefik routes `/api/*` to backend at same domain)
+- `production` stage: Nginx serving `/dist`; `frontend/docker/nginx.conf`: SPA fallback (`try_files $uri /index.html`), `/health` endpoint
 - `Dockerfile.dev`: Vite HMR server
 
 ---
@@ -685,25 +695,27 @@ backend-lint (Pint) → backend-test (Pest + MySQL service container)
   - Includes: composer audit (PHP dependency CVE scan, fails build on any vulnerability)
 frontend-lint (ESLint) → frontend-test (Vitest) → frontend-build
   - frontend-test includes: npm audit --audit-level=high (JS dependency CVE scan)
+  - Concurrency group: cancel-in-progress=true (fast feedback on each push)
+  - Global permissions: contents:read only
 ```
 
-### cd.yml (triggers on push to develop or main)
+### cd.yml (triggers via workflow_run: CI must pass first)
 ```
-develop → build :staging images → deploy to staging via SSH
-  - Pre-migration backup: mysqldump → ~/backups/pre-deploy-<timestamp>.sql (via docker compose exec db)
-main    → build :latest images  → deploy to prod via SSH
-  - Pre-migration backup: mysqldump → ~/backups/pre-deploy-<timestamp>.sql (via docker compose exec db)
+develop CI passes → build staging images → deploy to staging.satview.eu
+main    CI passes → build prod images    → approval gate → deploy to satview.eu
 ```
-
-Images pushed to GitHub Container Registry (ghcr.io).
-Prod deploy also runs `php artisan config:cache` + `route:cache`.
+- Images tagged sha-<7chars> (immutable) + staging/latest (convenience)
+- GHCR: ghcr.io/ponastadas/debris-monitor-{backend,frontend}
+- Deploy: SCP compose file → GHCR login → pull SHA images → DB backup → up -d → migrate → config:cache → health check
+- Image prune: --filter until=72h (preserves 3 days of rollback images)
+- Concurrency group: cancel-in-progress=false (queues deploys, never cancels)
 
 ### GitHub Secrets Required
 ```
 STAGING_HOST, STAGING_USER, STAGING_SSH_KEY
 PROD_HOST, PROD_USER, PROD_SSH_KEY
-VITE_API_URL_STAGING
 ```
+(VITE_API_URL_STAGING removed — frontend uses relative /api paths)
 
 ---
 
@@ -735,9 +747,9 @@ TLE groups (DEFAULT_GROUPS): `active`, `stations`, `weather`, `noaa`, `goes`, `r
 
 ## What's Built
 
-- [x] CI/CD pipeline (ci.yml + cd.yml)
-- [x] Docker multi-stage builds (backend + frontend)
-- [x] docker-compose local/staging/prod
+- [x] CI/CD pipeline — ci.yml (lint + test + build per service, concurrency cancel-in-progress) + cd.yml (workflow_run trigger so CD only fires after CI passes, SHA-tagged images `sha-<7chars>`, SCP compose file to server, GHCR login, DB backup before migration, health check loop, 72h image prune for rollback; production environment approval gate)
+- [x] Docker multi-stage builds — backend (`vendor → production`: supervisord runs nginx+php-fpm, `backend/docker/nginx.conf` + `supervisord.conf`; `development`: artisan serve) + frontend (node builder → nginx static)
+- [x] Docker Compose — `docker-compose.local.yml` (dev with HMR), `docker-compose.staging.yml` (full standalone: Traefik, backend, frontend, db, scheduler, worker), `docker-compose.yml` production (same + approval gate); all use `BACKEND_IMAGE`/`FRONTEND_IMAGE` env vars for SHA-pinned deploys
 - [x] Makefile dev shortcuts
 - [x] Laravel API: health, satellites, conjunctions, API keys
 - [x] AuthenticateApiKey middleware with rate limiting
@@ -772,7 +784,7 @@ TLE groups (DEFAULT_GROUPS): `active`, `stations`, `weather`, `noaa`, `goes`, `r
 - [x] BillingController::subscribe() — validation uses EntitlementService::paidPlanKeys() (no hardcoded strings)
 - [x] SubscriptionFactory + PaymentFactory — for test fixtures
 - [x] HasFactory added to Subscription + Payment models
-- [x] AdminAccountSeeder — idempotent (firstOrCreate) admin in admin_accounts: admin@debris.monitor / admin
+- [x] AdminAccountSeeder — idempotent (firstOrCreate) admin in admin_accounts: admin@satview.eu / admin
 - [x] BillingTest.php — 13 tests: plan resolution, subscribe/cancel, payment history, auth guards
 - [x] EntitlementTest.php — 14 tests: all actor types, add-on merging, catalog shape, capability checks
 - [x] ApiUsage: explicit $table = 'api_usage' (Eloquent would default to api_usages — bug fixed)
@@ -838,7 +850,7 @@ TLE groups (DEFAULT_GROUPS): `active`, `stations`, `weather`, `noaa`, `goes`, `r
 - [x] HasFactory added to ConjunctionAlert and WatchedSatellite models
 - [x] WatchedSatelliteFactory — states: iss(), hubble(), forNorad(id, name), withFreshTle()
 - [x] ConjunctionAlertFactory — states: high(), medium(), low(), past(), distant(), notified(), forPrimary(id, name)
-- [x] AlertDemoSeeder — creates 3 demo users covering all Alerts UI states (demo@debris.monitor starter+alerts, free@debris.monitor upgrade gate, empty@debris.monitor no-sats empty state); idempotent (recreates expired alerts only); run with `make artisan cmd="db:seed --class=AlertDemoSeeder"`
+- [x] AlertDemoSeeder — creates 3 demo users covering all Alerts UI states (demo@satview.eu starter+alerts, free@satview.eu upgrade gate, empty@satview.eu no-sats empty state); idempotent (recreates expired alerts only); run with `make artisan cmd="db:seed --class=AlertDemoSeeder"`
 - [x] DatabaseSeeder includes AlertDemoSeeder
 - [x] AlertController — standardized response envelope ($this->success() for all cases including empty watched sats)
 - [x] AlertTest.php — 19 tests: auth guards (401/403/200), empty states (no sats, sats with no alerts), retrieval (fields, risk_level derivation, TCA sort), scoping (unmonitored sats, past TCA, distant TCA, cross-user isolation, multi-sat), factory state tests
@@ -934,7 +946,7 @@ git push -u origin feat/tle-sync
 ## Starting a New Claude Session
 
 ```
-I'm building "Debris Monitor" — a satellite conjunction risk API + visualization platform.
+I'm building "SatView" — a satellite conjunction risk API + visualization platform.
 Laravel 13 backend, React 19 + Vite frontend, Docker, GitHub Actions CI/CD.
 Developing in WSL2. Repo at /mnt/c/projects/debris-monitor.
 Read CLAUDE_CONTEXT.md in the repo root for full context.

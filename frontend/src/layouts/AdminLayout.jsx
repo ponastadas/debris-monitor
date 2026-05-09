@@ -53,7 +53,7 @@ export default function AdminLayout() {
             letterSpacing: '0.25em',
             color: '#00d4ff',
           }}>
-            ◈ DEBRIS MONITOR
+            ◈ SATVIEW
           </div>
           <div style={{ fontSize: 9, color: '#484f58', letterSpacing: '0.15em', marginTop: 3 }}>
             ADMIN PANEL
