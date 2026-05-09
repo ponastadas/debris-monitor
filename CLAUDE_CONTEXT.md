@@ -1,5 +1,9 @@
 # SatView — Project Context
-> Last updated: 2026-05-08 (session 32 — DevOps overhaul: backend Dockerfile now has CMD [supervisord] to run nginx+php-fpm (was missing — containers only started php-fpm); backend/docker/nginx.conf + supervisord.conf added; docker-compose.yml: image vars BACKEND_IMAGE/FRONTEND_IMAGE (SHA-tagged by CD), scheduler + worker services added, Traefik HTTP→HTTPS redirect, service port labels, domain satview.eu; docker-compose.staging.yml: rewritten as complete standalone file with all services; ci.yml: permissions, concurrency, removed unused VITE_API_URL_STAGING secret; cd.yml: triggers via workflow_run (CI must pass first), SHA-tagged deploys (sha-<7chars>), SCP compose file to server, GHCR login on server, DB backup before up, set -euo pipefail, health check loop, 72h image prune; docs/deployment.md created; 266 backend + 44 frontend tests pass).
+> Last updated: 2026-05-09 (session 33 — real-data-only Alerts: removed AlertDemoSeeder + ConjunctionEventSeeder from DatabaseSeeder; both seeders now opt-in only and tag rows source='demo'; new `alerts:purge-demo` artisan command removes demo rows without touching CDM/SGP4 data; AlertController always returns source_configured bool in meta; frontend shows "DEMO DATA" badge for demo-source alerts and "Real CDM alerts require Space-Track credentials" note in ALL CLEAR state when credentials absent; 271 backend tests pass).
+
+---
+
+(session 32 — DevOps overhaul: backend Dockerfile now has CMD [supervisord] to run nginx+php-fpm (was missing — containers only started php-fpm); backend/docker/nginx.conf + supervisord.conf added; docker-compose.yml: image vars BACKEND_IMAGE/FRONTEND_IMAGE (SHA-tagged by CD), scheduler + worker services added, Traefik HTTP→HTTPS redirect, service port labels, domain satview.eu; docker-compose.staging.yml: rewritten as complete standalone file with all services; ci.yml: permissions, concurrency, removed unused VITE_API_URL_STAGING secret; cd.yml: triggers via workflow_run (CI must pass first), SHA-tagged deploys (sha-<7chars>), SCP compose file to server, GHCR login on server, DB backup before up, set -euo pipefail, health check loop, 72h image prune; docs/deployment.md created; 266 backend + 44 frontend tests pass).
 
 ---
 
@@ -851,7 +855,11 @@ TLE groups (DEFAULT_GROUPS): `active`, `stations`, `weather`, `noaa`, `goes`, `r
 - [x] WatchedSatelliteFactory — states: iss(), hubble(), forNorad(id, name), withFreshTle()
 - [x] ConjunctionAlertFactory — states: high(), medium(), low(), past(), distant(), notified(), forPrimary(id, name)
 - [x] AlertDemoSeeder — creates 3 demo users covering all Alerts UI states (demo@satview.eu starter+alerts, free@satview.eu upgrade gate, empty@satview.eu no-sats empty state); idempotent (recreates expired alerts only); run with `make artisan cmd="db:seed --class=AlertDemoSeeder"`
-- [x] DatabaseSeeder includes AlertDemoSeeder
+- [x] AlertDemoSeeder — opt-in only (NOT in DatabaseSeeder); tags all rows source='demo'; run: `php artisan db:seed --class=AlertDemoSeeder`
+- [x] ConjunctionEventSeeder — opt-in only (NOT in DatabaseSeeder); tags all rows source='demo'; run: `php artisan db:seed --class=ConjunctionEventSeeder` (alias: `make seed-conjunctions`)
+- [x] `alerts:purge-demo` artisan command — deletes source='demo' alerts, null-source/null-event alerts (old seeder rows), alerts linked to DEMO-* events, and DEMO-* conjunction_events; preserves space_track_cdm and sgp4 rows; supports --dry-run
+- [x] AlertController — always returns meta with source_configured bool (true if SPACE_TRACK_USER+PASS set); meta.source=null when no alerts exist (was 'sgp4' even for empty); single response path (no early return for empty watched list)
+- [x] ConjunctionAlerts.jsx — 'demo' added to SOURCE_LABEL/SOURCE_COLOR; meta bar only shown when meta.source is non-null; "ALL CLEAR" empty state shows orange note when !meta.source_configured
 - [x] AlertController — standardized response envelope ($this->success() for all cases including empty watched sats)
 - [x] AlertTest.php — 19 tests: auth guards (401/403/200), empty states (no sats, sats with no alerts), retrieval (fields, risk_level derivation, TCA sort), scoping (unmonitored sats, past TCA, distant TCA, cross-user isolation, multi-sat), factory state tests
 - [x] ConjunctionAlerts search picker: LOCAL_CATALOG (20 satellites, instant), deferred CelesTrak remote search (350ms debounce, merge), keyboard nav (↑↓/Enter/Esc), clear button, spinner, two-step unwatch confirm, tle_fresh display removed

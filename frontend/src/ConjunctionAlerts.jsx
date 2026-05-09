@@ -219,8 +219,8 @@ const STYLE = `
 `;
 
 const RISK_COLOR  = { HIGH: "#ff3b30", MEDIUM: "#ff9500", LOW: "#30d158" };
-const SOURCE_LABEL = { space_track_cdm: "SPACE-TRACK CDM", sgp4: "SGP4 COMPUTED", simulated: "SIMULATED" };
-const SOURCE_COLOR = { space_track_cdm: "#30d158", sgp4: "rgba(0,212,255,0.6)", simulated: "#ff9500" };
+const SOURCE_LABEL = { space_track_cdm: "SPACE-TRACK CDM", sgp4: "SGP4 COMPUTED", simulated: "SIMULATED", demo: "DEMO DATA" };
+const SOURCE_COLOR = { space_track_cdm: "#30d158", sgp4: "rgba(0,212,255,0.6)", simulated: "#ff9500", demo: "#ff9500" };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -824,8 +824,8 @@ export default function ConjunctionAlerts({ onTrack }) {
             </button>
           </div>
 
-          {/* Data credibility bar */}
-          {meta && (
+          {/* Data credibility bar — only shown when there are active alerts with a known source */}
+          {meta?.source && (
             <div style={{
               display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap",
               marginBottom: 18, padding: "8px 12px",
@@ -838,7 +838,7 @@ export default function ConjunctionAlerts({ onTrack }) {
                   color: SOURCE_COLOR[meta.source] ?? "rgba(200,223,240,0.6)",
                   fontWeight: 600,
                 }}>
-                  {SOURCE_LABEL[meta.source] ?? meta.source?.toUpperCase() ?? "UNKNOWN"}
+                  {SOURCE_LABEL[meta.source] ?? meta.source?.toUpperCase()}
                 </span>
               </div>
               {meta.coverage && (
@@ -899,9 +899,20 @@ export default function ConjunctionAlerts({ onTrack }) {
                     ALL CLEAR
                   </div>
                   <div style={{ lineHeight: 1.9, color: "rgba(200,223,240,0.35)" }}>
-                    No upcoming conjunctions for your {watched.length} watched satellite{watched.length > 1 ? "s" : ""}.
+                    No upcoming conjunction alerts for your {watched.length} watched satellite{watched.length > 1 ? "s" : ""}.
                     <br />Checks run every 6 hours.
                   </div>
+                  {meta && !meta.source_configured && (
+                    <div style={{
+                      marginTop: 14, color: "#ff9500", fontSize: 9, lineHeight: 1.7,
+                      padding: "8px 12px", background: "rgba(255,149,0,0.06)",
+                      border: "1px solid rgba(255,149,0,0.2)", borderRadius: 4,
+                      maxWidth: 260, margin: "14px auto 0",
+                    }}>
+                      Real CDM alerts require Space-Track credentials on the server
+                      (SPACE_TRACK_USER / SPACE_TRACK_PASS).
+                    </div>
+                  )}
                 </>
               )}
             </div>

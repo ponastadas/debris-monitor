@@ -1,9 +1,11 @@
 <?php
 
 use App\Models\ConjunctionAlert;
+use App\Models\ConjunctionEvent;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Models\WatchedSatellite;
+use Database\Seeders\DatabaseSeeder;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -254,6 +256,46 @@ it('meta source is space_track_cdm when any alert is CDM', function () {
     upcomingAlert('25544', ['source' => 'space_track_cdm']);
 
     expect($this->withToken($token)->getJson('/api/alerts')->json('meta.source'))->toBe('space_track_cdm');
+});
+
+// ── source_configured metadata ────────────────────────────────────────────────
+
+it('response always includes source_configured in meta', function () {
+    [, $token] = alertUser();
+
+    $res = $this->withToken($token)->getJson('/api/alerts')->assertOk();
+
+    expect($res->json('meta'))->toHaveKey('source_configured')
+        ->and($res->json('meta.source_configured'))->toBeBool();
+});
+
+it('meta source_configured is false when Space-Track credentials are absent', function () {
+    config(['services.space_track.user' => null, 'services.space_track.pass' => null]);
+
+    [, $token] = alertUser();
+
+    expect($this->withToken($token)->getJson('/api/alerts')->json('meta.source_configured'))->toBeFalse();
+});
+
+it('meta source is null when user has no alerts', function () {
+    [$user, $token] = alertUser();
+    watchedSat($user, '25544');
+
+    expect($this->withToken($token)->getJson('/api/alerts')->json('meta.source'))->toBeNull();
+});
+
+// ── DatabaseSeeder does not create demo data ──────────────────────────────────
+
+it('DatabaseSeeder does not create any conjunction alerts', function () {
+    $this->seed(DatabaseSeeder::class);
+
+    expect(ConjunctionAlert::count())->toBe(0);
+});
+
+it('DatabaseSeeder does not create any conjunction events', function () {
+    $this->seed(DatabaseSeeder::class);
+
+    expect(ConjunctionEvent::count())->toBe(0);
 });
 
 // ── Factory state tests ───────────────────────────────────────────────────────
