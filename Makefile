@@ -1,4 +1,4 @@
-.PHONY: up down setup sync-catalog sync-conjunctions seed-conjunctions test lint logs shell shell-backend shell-db backup restore
+.PHONY: up down setup sync-catalog sync-conjunctions sync-all seed-conjunctions test lint logs shell shell-backend shell-db backup restore
 
 # ── Start everything ──────────────────────────────────────────
 up:
@@ -41,22 +41,25 @@ sync-catalog-spacetrack:
 sync-conjunctions:
 	docker compose -f docker-compose.local.yml run --rm backend php artisan conjunctions:sync
 
+# Sync everything at once: satellite catalog (CelesTrak) + conjunction data (Space-Track).
+# conjunctions:sync exits cleanly if SPACE_TRACK_USER/PASS are not set in .env.
+sync-all:
+	docker compose -f docker-compose.local.yml run --rm backend php artisan satellites:sync
+	docker compose -f docker-compose.local.yml run --rm backend php artisan conjunctions:sync
+
 # Seed demo conjunction events (no Space-Track credentials required).
 # Populates conjunction_events + conjunction_alerts for ISS/Hubble/GOES-16.
 seed-conjunctions:
 	docker compose -f docker-compose.local.yml run --rm backend php artisan db:seed --class=ConjunctionEventSeeder
 
 # ── Tests ─────────────────────────────────────────────────────
+# APP_KEY is generated at runtime by tests/bootstrap.php — no hardcoded key needed.
 test:
 	docker compose -f docker-compose.local.yml run --rm \
-		-e APP_KEY="base64:QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=" \
-		-e APP_ENV=testing \
 		backend sh -c "php artisan config:clear 2>/dev/null; php artisan test"
 
 test-filter:
 	docker compose -f docker-compose.local.yml run --rm \
-		-e APP_KEY="base64:QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=" \
-		-e APP_ENV=testing \
 		backend sh -c "php artisan config:clear 2>/dev/null; php artisan test --filter=$(filter)"
 
 # ── Lint ──────────────────────────────────────────────────────
