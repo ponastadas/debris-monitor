@@ -439,7 +439,7 @@ class SatelliteSyncCommand extends Command
         $this->line('Fetching SATCAT for per-object type classification…');
 
         try {
-            $response = Http::timeout(60)->get(self::SATCAT_URL);
+            $response = Http::timeout(120)->get(self::SATCAT_URL);
         } catch (\Throwable $e) {
             $this->warn("SATCAT fetch failed: {$e->getMessage()} — falling back to group-level types");
             return [];
@@ -499,7 +499,7 @@ class SatelliteSyncCommand extends Command
     private function fetchGroup(string $group): ?array
     {
         try {
-            $response = Http::timeout(30)->get(self::CELESTRAK_URL, [
+            $response = Http::timeout(90)->get(self::CELESTRAK_URL, [
                 'GROUP'  => $group,
                 'FORMAT' => 'TLE',
             ]);

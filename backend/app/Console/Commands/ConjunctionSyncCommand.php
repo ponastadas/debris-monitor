@@ -124,12 +124,16 @@ class ConjunctionSyncCommand extends Command
             return null;
         }
 
-        $sat1 = trim((string) ($raw['SAT1_OBJECT_DESIGNATOR'] ?? ''));
-        $sat2 = trim((string) ($raw['SAT2_OBJECT_DESIGNATOR'] ?? ''));
+        $sat1 = trim((string) ($raw['SAT_1_ID'] ?? ''));
+        $sat2 = trim((string) ($raw['SAT_2_ID'] ?? ''));
 
         if ($sat1 === '' || $sat2 === '') {
             return null;
         }
+
+        // Normalise to 5-digit zero-padded to match the satellites table.
+        $sat1 = str_pad($sat1, 5, '0', STR_PAD_LEFT);
+        $sat2 = str_pad($sat2, 5, '0', STR_PAD_LEFT);
 
         $minRng = (float) ($raw['MIN_RNG'] ?? 0);
         $pc     = isset($raw['PC']) && $raw['PC'] !== '' ? (float) $raw['PC'] : null;
@@ -138,8 +142,8 @@ class ConjunctionSyncCommand extends Command
             $this->line(sprintf(
                 '  [dry-run] CDM %s | %s ↔ %s | TCA %s | %.3f km | PC %s',
                 $cdmId,
-                $raw['SAT1_NAME'] ?? $sat1,
-                $raw['SAT2_NAME'] ?? $sat2,
+                $raw['SAT_1_NAME'] ?? $sat1,
+                $raw['SAT_2_NAME'] ?? $sat2,
                 $tca->format('Y-m-d H:i'),
                 $minRng,
                 $pc !== null ? number_format($pc, 8) : 'N/A',
@@ -153,9 +157,9 @@ class ConjunctionSyncCommand extends Command
                 'probability'          => $pc,
                 'emergency_reportable' => ($raw['EMERGENCY_REPORTABLE'] ?? 'N') === 'Y',
                 'sat1_norad_id'        => $sat1,
-                'sat1_name'            => substr((string) ($raw['SAT1_NAME'] ?? $sat1), 0, 120),
+                'sat1_name'            => substr((string) ($raw['SAT_1_NAME'] ?? $sat1), 0, 120),
                 'sat2_norad_id'        => $sat2,
-                'sat2_name'            => substr((string) ($raw['SAT2_NAME'] ?? $sat2), 0, 120),
+                'sat2_name'            => substr((string) ($raw['SAT_2_NAME'] ?? $sat2), 0, 120),
                 'source'               => 'space_track_cdm',
                 'fetched_at'           => now(),
             ]);
@@ -170,9 +174,9 @@ class ConjunctionSyncCommand extends Command
                 'probability'          => $pc,
                 'emergency_reportable' => ($raw['EMERGENCY_REPORTABLE'] ?? 'N') === 'Y',
                 'sat1_norad_id'        => $sat1,
-                'sat1_name'            => substr((string) ($raw['SAT1_NAME'] ?? $sat1), 0, 120),
+                'sat1_name'            => substr((string) ($raw['SAT_1_NAME'] ?? $sat1), 0, 120),
                 'sat2_norad_id'        => $sat2,
-                'sat2_name'            => substr((string) ($raw['SAT2_NAME'] ?? $sat2), 0, 120),
+                'sat2_name'            => substr((string) ($raw['SAT_2_NAME'] ?? $sat2), 0, 120),
                 'source'               => 'space_track_cdm',
                 'fetched_at'           => now(),
             ],
