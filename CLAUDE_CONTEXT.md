@@ -1,5 +1,5 @@
 # SatView — Project Context
-> Last updated: 2026-05-09 (session 33 — real-data-only Alerts: removed AlertDemoSeeder + ConjunctionEventSeeder from DatabaseSeeder; both seeders now opt-in only and tag rows source='demo'; new `alerts:purge-demo` artisan command removes demo rows without touching CDM/SGP4 data; AlertController always returns source_configured bool in meta; frontend shows "DEMO DATA" badge for demo-source alerts and "Real CDM alerts require Space-Track credentials" note in ALL CLEAR state when credentials absent; 271 backend tests pass).
+> Last updated: 2026-05-09 (session 34 — fixed Space-Track CDM field names: API returns SAT_1_ID/SAT_2_ID/SAT_1_NAME/SAT_2_NAME, not SAT1_OBJECT_DESIGNATOR/SAT1_NAME as code assumed; all 288 CDM records were being silently skipped; NORAD IDs now zero-padded to 5 digits; CelesTrak group timeout 30→90s; SATCAT CSV timeout 60→120s; 282 backend tests pass).
 
 ---
 
