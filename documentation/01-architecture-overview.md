@@ -1,62 +1,65 @@
 # 1. Architecture Overview
 
-## 1.1 System Context (C4 Level 1)
+## 1.1 System Context
 
 ```mermaid
-C4Context
-    title SatView — System Context
+graph TB
+    subgraph Users["Users"]
+        guest["👤 Guest User\nBrowses catalog\n10 free analyses/day"]
+        user["👤 Registered User\nTracks satellites\nViews alerts (plan-gated)"]
+        admin["👤 Admin\nManages users, billing\nCMS via /dashboard"]
+        dev["👤 API Developer\nQueries conjunction data\nvia API key"]
+    end
 
-    Person(guest,    "Guest User",       "Browses catalog, runs up to 10 free analyses/day")
-    Person(user,     "Registered User",  "Tracks satellites, views alerts (plan-gated)")
-    Person(admin,    "Admin",            "Manages users, subscriptions, CMS via /dashboard")
-    Person(developer,"API Developer",    "Queries conjunction data via API key")
+    subgraph SatView["SatView Platform"]
+        platform["🌐 satview.eu\nReal-time orbital debris\nrisk monitoring"]
+    end
 
-    System(satview, "SatView Platform", "Real-time orbital debris risk monitoring")
+    subgraph External["External Systems"]
+        spacetrack["Space-Track.org\nAuthoritative GP catalog\n+ CDM conjunctions"]
+        celestrak["CelesTrak\nFallback TLE catalog"]
+        smtp["SMTP Server\nAlert & auth emails"]
+        stripe["Stripe\nPayments (planned)"]
+        ga4["Google Analytics\nTelemetry (consent-gated)"]
+    end
 
-    System_Ext(spacetrack, "Space-Track.org",  "Authoritative satellite catalog + CDM conjunction data")
-    System_Ext(celestrak,  "CelesTrak",        "Fallback TLE catalog when Space-Track unavailable")
-    System_Ext(smtp,       "SMTP Server",      "Transactional email (alerts, password reset)")
-    System_Ext(stripe,     "Stripe",           "Payment processing (integration pending)")
-    System_Ext(ga4,        "Google Analytics", "Page-view telemetry (consent-gated)")
+    guest -->|HTTPS| platform
+    user -->|HTTPS| platform
+    admin -->|HTTPS| platform
+    dev -->|HTTPS / X-API-Key| platform
 
-    Rel(guest,      satview,    "Views globe, searches satellites, runs analyses", "HTTPS")
-    Rel(user,       satview,    "All guest features + alerts + watched satellites", "HTTPS")
-    Rel(admin,      satview,    "Admin dashboard: users, billing, CMS, audit log",  "HTTPS")
-    Rel(developer,  satview,    "Conjunction queries",  "HTTPS / X-API-Key")
-
-    Rel(satview, spacetrack, "Fetches GP catalog + CDM conjunctions", "HTTPS / session cookie")
-    Rel(satview, celestrak,  "Fallback TLE fetch",                    "HTTPS")
-    Rel(satview, smtp,       "Sends alert + auth emails",              "SMTP/587")
-    Rel(satview, stripe,     "Billing webhooks (planned)",             "HTTPS")
-    Rel(satview, ga4,        "Pageview events",                        "HTTPS")
+    platform -->|GP catalog + CDM\nHTTPS / session cookie| spacetrack
+    platform -->|Fallback TLE fetch\nHTTPS| celestrak
+    platform -->|Alert + auth emails\nSMTP/587| smtp
+    platform -->|Billing webhooks planned\nHTTPS| stripe
+    platform -->|Pageview events\nHTTPS| ga4
 ```
 
 ---
 
-## 1.2 Container Diagram (C4 Level 2)
+## 1.2 Container Diagram
 
 ```mermaid
-C4Container
-    title SatView — Container Diagram
+graph TB
+    user["User / Admin / Developer"]
 
-    Person(user, "User / Admin / Developer")
+    subgraph platform["SatView Platform"]
+        proxy["Reverse Proxy\nTraefik (prod) / nginx (local)\nTLS termination"]
+        frontend["Frontend SPA\nReact 18 / Vite / Three.js\nGlobe, tracker, alerts, admin"]
+        backend["Backend API\nLaravel 11 / PHP 8.3\nREST API + business logic"]
+        db[("Database\nMySQL 8.0\nSatellites, conjunctions\nusers, billing")]
+        worker["Queue Worker\nLaravel queue:work\nAsync email notifications"]
+        scheduler["Scheduler\nLaravel schedule:run\nCron: sync + backup"]
+    end
 
-    System_Boundary(platform, "SatView Platform") {
-        Container(proxy,    "Reverse Proxy",  "Traefik (prod) / nginx (local)", "TLS termination, routes /api/* → backend, /* → frontend")
-        Container(frontend, "Frontend SPA",   "React 18 / Vite / Three.js",     "Globe visualization, tracker, alerts UI, admin panel")
-        Container(backend,  "Backend API",    "Laravel 11 / PHP 8.3",           "REST API, business logic, queue worker, scheduler")
-        Container(db,       "Database",       "MySQL 8.0",                       "Persistent storage: satellites, conjunctions, users, billing")
-        Container(worker,   "Queue Worker",   "Laravel queue:work",              "Async jobs: email notifications")
-        Container(scheduler,"Scheduler",      "Laravel schedule:run",            "Cron: satellite sync, conjunction sync, DB backup")
-    }
-
-    Rel(user,      proxy,     "HTTPS requests")
-    Rel(proxy,     frontend,  "/*, /dashboard, /admin → static SPA", "HTTP")
-    Rel(proxy,     backend,   "/api/* → Laravel",                     "HTTP/FastCGI")
-    Rel(frontend,  backend,   "Axios REST calls to /api/*",           "HTTP")
-    Rel(backend,   db,        "Eloquent ORM",                         "MySQL TCP 3306")
-    Rel(backend,   worker,    "Dispatches jobs via database queue")
-    Rel(scheduler, backend,   "php artisan {satellites,conjunctions,db}:*")
+    user -->|HTTPS| proxy
+    proxy -->|/* → static SPA\nHTTP| frontend
+    proxy -->|/api/* → Laravel\nHTTP/FastCGI| backend
+    frontend -->|Axios REST /api/*| backend
+    backend -->|Eloquent ORM\nMySQL TCP 3306| db
+    backend -->|Dispatch jobs\ndatabase queue| worker
+    worker --> db
+    scheduler -->|php artisan\nsatellites/conjunctions/db| backend
 ```
 
 ---
