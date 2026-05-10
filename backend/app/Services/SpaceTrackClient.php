@@ -201,6 +201,40 @@ class SpaceTrackClient
     }
 
     /**
+     * Fetch a single GP record by NORAD ID.
+     * Used by the staleness sweep to refresh individual satellites.
+     *
+     * @return array{norad_id: string, name: string, object_type: string, international_designator: string|null, line1: string, line2: string}|null
+     */
+    public function fetchGpByNorad(string $noradId): ?array
+    {
+        $id  = ltrim($noradId, '0') ?: '0';
+        $url = self::BASE . self::GP_BASE . '/NORAD_CAT_ID/' . rawurlencode($id) . '/format/json';
+
+        $guzzle = new GuzzleClient(['cookies' => $this->jar, 'timeout' => 15]);
+
+        try {
+            $response = $guzzle->get($url);
+        } catch (\Throwable $e) {
+            Log::error('[SpaceTrack] GP single fetch error: ' . $e->getMessage());
+            return null;
+        }
+
+        $status = $response->getStatusCode();
+        if ($status < 200 || $status >= 300) {
+            return null;
+        }
+
+        $data = json_decode((string) $response->getBody(), true);
+
+        if (! is_array($data) || count($data) === 0) {
+            return null;
+        }
+
+        return $this->normalizeGpRecord($data[0]);
+    }
+
+    /**
      * Fetch CDM_PUBLIC data — conjunction events for the next 7 days.
      *
      * @return list<array<string, mixed>>  Raw CDM records from Space-Track.

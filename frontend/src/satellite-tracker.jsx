@@ -765,7 +765,7 @@ export default function SatelliteTracker({
 
     // Try loading real texture
     new THREE.TextureLoader().load(
-      "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/land_ocean_ice_cloud_2048.jpg",
+      '/earth.jpg',
       (tex) => { earthMat.map = tex; earthMat.needsUpdate = true; },
       undefined,
       () => {}

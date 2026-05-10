@@ -448,24 +448,6 @@ export default function DebrisMonitor({ onTrack }) {
     camera.position.set(0, 0, 3.5);
     camRef.current = camera;
 
-    // Globe
-    const earthGeo  = new THREE.SphereGeometry(1, 64, 64);
-    const earthMat  = new THREE.MeshPhongMaterial({ color: 0x0a1628, emissive: 0x071020 });
-    scene.add(new THREE.Mesh(earthGeo, earthMat));
-
-    // Atmosphere glow
-    const atmGeo = new THREE.SphereGeometry(1.02, 32, 32);
-    const atmMat = new THREE.MeshPhongMaterial({
-      color: 0x003366, transparent: true, opacity: 0.08, side: THREE.FrontSide,
-    });
-    scene.add(new THREE.Mesh(atmGeo, atmMat));
-
-    // Lights
-    scene.add(new THREE.AmbientLight(0x223344, 2));
-    const sun = new THREE.DirectionalLight(0x4488cc, 3);
-    sun.position.set(5, 3, 5);
-    scene.add(sun);
-
     // Stars
     const starGeo = new THREE.BufferGeometry();
     const starPos = new Float32Array(3000);
@@ -478,7 +460,39 @@ export default function DebrisMonitor({ onTrack }) {
       starPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
     }
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
-    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x334455, size: 0.15 })));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.06, transparent: true, opacity: 0.7 })));
+
+    // Globe
+    const earthGeo = new THREE.SphereGeometry(1, 64, 64);
+    const earthMat = new THREE.MeshPhongMaterial({
+      color: 0x1a4a8a, emissive: 0x050e20, specular: 0x2266bb, shininess: 12,
+    });
+    scene.add(new THREE.Mesh(earthGeo, earthMat));
+    new THREE.TextureLoader().load(
+      '/earth.jpg',
+      (tex) => { earthMat.map = tex; earthMat.needsUpdate = true; },
+      undefined,
+      () => {}
+    );
+
+    // Atmosphere
+    const atmGeo = new THREE.SphereGeometry(1.025, 64, 64);
+    const atmMat = new THREE.MeshPhongMaterial({ color: 0x2255cc, transparent: true, opacity: 0.07, side: THREE.FrontSide });
+    scene.add(new THREE.Mesh(atmGeo, atmMat));
+
+    // Outer glow
+    const glowGeo = new THREE.SphereGeometry(1.06, 64, 64);
+    const glowMat = new THREE.MeshPhongMaterial({ color: 0x0033aa, transparent: true, opacity: 0.03, side: THREE.FrontSide });
+    scene.add(new THREE.Mesh(glowGeo, glowMat));
+
+    // Lights
+    scene.add(new THREE.AmbientLight(0x111133, 1.2));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.8);
+    sun.position.set(5, 3, 5);
+    scene.add(sun);
+    const fill = new THREE.DirectionalLight(0x112244, 0.4);
+    fill.position.set(-5, -3, -5);
+    scene.add(fill);
 
     const resize = () => {
       // Read dimensions from the parent container — not from the canvas element,
@@ -606,6 +620,7 @@ export default function DebrisMonitor({ onTrack }) {
       } else {
         dummy.position.set(0, 0, 0);
       }
+      dummy.scale.setScalar(obj.type === 'debris' ? 0.5 : 1);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
       color.copy(COLORS[obj.type] || COLORS.unknown);
@@ -666,7 +681,7 @@ export default function DebrisMonitor({ onTrack }) {
         }
 
         const pos = tleToPosition(obj.line1, obj.line2, simNow);
-        dummy.scale.setScalar(1);
+        dummy.scale.setScalar(obj.type === 'debris' ? 0.5 : 1);
         if (pos) dummy.position.copy(pos);
         else dummy.position.set(0, 0, 0);
         dummy.updateMatrix();

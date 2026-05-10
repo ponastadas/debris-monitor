@@ -13,12 +13,12 @@ use Illuminate\Support\Facades\Http;
 class SatelliteSyncCommand extends Command
 {
     protected $signature = 'satellites:sync
-                            {--source=celestrak : Data source: celestrak (default) or spacetrack}
-                            {--groups= : Comma-separated CelesTrak group names (default: all configured groups)}
+                            {--source=spacetrack : Data source: spacetrack (default) or celestrak}
+                            {--groups= : Comma-separated CelesTrak group names — only used when --source=celestrak}
                             {--incremental : Only fetch recently updated objects + staleness sweep; skips full catalog re-download}
                             {--dry-run : Parse and count without writing to DB}';
 
-    protected $description = 'Fetch TLE data from CelesTrak and upsert into local satellite catalog';
+    protected $description = 'Sync satellite catalog from Space-Track (default) or CelesTrak';
 
     /**
      * CelesTrak TLE groups for a full catalog sync (6 requests, non-overlapping).
@@ -119,10 +119,15 @@ class SatelliteSyncCommand extends Command
         $isDryRun      = $this->option('dry-run');
         $isIncremental = $this->option('incremental');
 
-        if ($this->option('source') === 'spacetrack') {
+        if ($this->option('source') !== 'celestrak') {
             return $this->handleSpaceTrack($isDryRun, $isIncremental);
         }
 
+        return $this->handleCelesTrak($isDryRun, $isIncremental);
+    }
+
+    private function handleCelesTrak(bool $isDryRun, bool $isIncremental): int
+    {
         if ($this->option('groups')) {
             $groups = explode(',', $this->option('groups'));
         } elseif ($isIncremental) {
@@ -131,7 +136,7 @@ class SatelliteSyncCommand extends Command
             $groups = self::DEFAULT_GROUPS;
         }
 
-        $this->info('SatView — Satellite Catalog Sync' . ($isIncremental ? ' (incremental)' : ''));
+        $this->info('SatView — Satellite Catalog Sync (CelesTrak)' . ($isIncremental ? ' (incremental)' : ''));
         $this->line('Groups: '.implode(', ', $groups));
         $isDryRun && $this->warn('DRY RUN — no data will be written');
         $this->newLine();
@@ -207,12 +212,12 @@ class SatelliteSyncCommand extends Command
 
     private function handleSpaceTrack(bool $isDryRun, bool $isIncremental): int
     {
-        $user = env('SPACE_TRACK_USER');
-        $pass = env('SPACE_TRACK_PASS');
+        $user = config('services.space_track.user');
+        $pass = config('services.space_track.pass');
 
         if (! $user || ! $pass) {
-            $this->error('SPACE_TRACK_USER and SPACE_TRACK_PASS must be set in .env');
-            return self::FAILURE;
+            $this->warn('SPACE_TRACK_USER / SPACE_TRACK_PASS not set — falling back to CelesTrak.');
+            return $this->handleCelesTrak($isDryRun, $isIncremental);
         }
 
         $client = new SpaceTrackClient();
@@ -288,7 +293,7 @@ class SatelliteSyncCommand extends Command
         $uniqueCount = DB::table('tle_records')->where('is_current', true)->count();
         $this->info("Sync complete — {$uniqueCount} unique objects with current TLE ({$total} parsed, {$tles} TLE records inserted)");
 
-        $this->runStalenessSweep($isDryRun);
+        $this->runStalenessSweep($isDryRun, $client);
 
         return self::SUCCESS;
     }
@@ -302,13 +307,17 @@ class SatelliteSyncCommand extends Command
     }
 
     /**
-     * Refresh stale per-satellite TLEs via individual CATNR= calls.
+     * Refresh stale per-satellite TLEs.
+     *
+     * When an authenticated $client is provided (Space-Track mode) each satellite
+     * is refreshed via the GP single-object endpoint.  Without a client it falls
+     * back to the CelesTrak CATNR= endpoint.
      *
      * Candidates: current TLE older than 24h, OR no current TLE at all.
      * Ordered oldest-first so the most-stale are always prioritised.
      * Capped at SATELLITE_SYNC_STALE_LIMIT (default 200) per run.
      */
-    private function runStalenessSweep(bool $isDryRun): void
+    private function runStalenessSweep(bool $isDryRun, ?SpaceTrackClient $client = null): void
     {
         $limit     = (int) env('SATELLITE_SYNC_STALE_LIMIT', 200);
         $threshold = now()->subHours(24);
@@ -352,24 +361,27 @@ class SatelliteSyncCommand extends Command
         $refreshed = 0;
 
         foreach ($candidates as $sat) {
-            $result = $this->fetchSingleTle($sat->norad_id);
+            if ($client !== null) {
+                $result = $client->fetchGpByNorad($sat->norad_id);
+                usleep(300_000); // 300ms between Space-Track calls
+            } else {
+                $result = $this->fetchSingleTle($sat->norad_id);
 
-            if ($result === false) {
-                // 429 — CelesTrak is throttling individual CATNR calls; abort sweep.
-                $this->warn("  Staleness sweep stopped: CelesTrak returned 429 — will retry on next run");
-                break;
+                if ($result === false) {
+                    $this->warn("  Staleness sweep stopped: CelesTrak returned 429 — will retry on next run");
+                    break;
+                }
+
+                usleep(100_000); // 100ms between CelesTrak calls
             }
 
             if ($result === null) {
                 $this->line("  ✗ Could not refresh NORAD {$sat->norad_id} — skipping");
-                usleep(100_000);
                 continue;
             }
 
             $sat->upsertCurrentTle($result['line1'], $result['line2']);
             $refreshed++;
-
-            usleep(100_000); // 100ms between calls — respect CelesTrak rate limits
         }
 
         $this->line("Staleness sweep complete — {$refreshed} TLE(s) refreshed");
