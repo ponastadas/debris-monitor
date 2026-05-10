@@ -328,6 +328,86 @@ docker compose -f ~/satview-production/docker-compose.yml --project-name satview
 
 ---
 
+## Automated DB Backups (Cloudflare R2)
+
+Daily compressed mysqldump → Cloudflare R2, 30-day retention.
+
+### 1. Create a Cloudflare R2 bucket
+
+1. Log into [dash.cloudflare.com](https://dash.cloudflare.com) → **R2** → **Create bucket**
+2. Name it `satview-backups`
+3. Go to **R2 → Manage R2 API tokens** → **Create API token**
+   - Permissions: **Object Read & Write** on `satview-backups` only
+   - Copy the **Access Key ID** and **Secret Access Key**
+4. Copy your **Account ID** from the R2 overview page (top right)
+
+### 2. Install rclone on the VPS
+
+```bash
+curl https://rclone.org/install.sh | sudo bash
+```
+
+### 3. Configure rclone
+
+```bash
+rclone config
+```
+
+Choose `n` (new remote), then:
+
+```
+name: r2
+type: s3
+provider: Cloudflare
+access_key_id: <your-r2-access-key>
+secret_access_key: <your-r2-secret-key>
+endpoint: https://<your-account-id>.r2.cloudflarestorage.com
+acl: private
+```
+
+Test it:
+```bash
+rclone ls r2:satview-backups
+```
+
+### 4. Install the backup script
+
+```bash
+# Copy from repo (already present after git clone)
+chmod +x /opt/satview/deploy/backup-db.sh
+chmod +x /opt/satview/deploy/restore-db.sh
+```
+
+Edit the top of `backup-db.sh` to match your production credentials (DB_PASS, DB_NAME).
+
+### 5. Schedule with cron
+
+```bash
+crontab -e
+```
+
+Add:
+```
+0 2 * * * /opt/satview/deploy/backup-db.sh >> /var/log/satview-backup.log 2>&1
+```
+
+Runs at 02:00 UTC every night. Check the log after the first run:
+```bash
+tail -f /var/log/satview-backup.log
+```
+
+### Restore a backup
+
+```bash
+# List all available backups (local + R2)
+/opt/satview/deploy/restore-db.sh
+
+# Restore a specific file
+/opt/satview/deploy/restore-db.sh db_20260510_020001.sql.gz
+```
+
+---
+
 ## Scheduled Tasks (auto-running after deploy)
 
 The `scheduler` container runs `php artisan schedule:run` every 60 seconds. Active schedules:

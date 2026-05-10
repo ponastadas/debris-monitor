@@ -157,9 +157,17 @@ function AlertsUpgradeGate({ plan }) {
 
 function MainApp() {
   const { user, loading, logout } = useAuth();
-  const [view, setView]       = useState('catalog');
+  const [view, setView]       = useState(() => localStorage.getItem('satview_view') || 'catalog');
+
+  useEffect(() => { localStorage.setItem('satview_view', view); }, [view]);
   const [trackId, setTrackId] = useState('25544');
-  const [savedSats, setSavedSats] = useState([]);
+  const [savedSats, setSavedSats] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('satview_tracked') || '[]'); } catch { return []; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('satview_tracked', JSON.stringify(savedSats));
+  }, [savedSats]);
 
   function handleTrack(noradId) {
     setTrackId(noradId);

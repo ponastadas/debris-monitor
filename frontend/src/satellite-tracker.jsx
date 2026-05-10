@@ -482,6 +482,8 @@ const QUICK_SATS = [
   { id: "48274", label: "Tianhe" },
 ];
 
+
+
 function latLonAltToVec3(lat, lon, alt) {
   const earthRadius = 6371;
   const r = (earthRadius + alt) / earthRadius;
@@ -636,6 +638,7 @@ export default function SatelliteTracker({
   const rendererRef = useRef(null);
   const earthRef = useRef(null);
   const atmRef = useRef(null);
+
   const frameRef = useRef(null);
   const trackedSatsRef   = useRef([]);          // [{id, name, satrec, colorHex}]
   const satMeshesRef     = useRef({});           // {noradId: {dot, ring, orbit}}
@@ -658,6 +661,7 @@ export default function SatelliteTracker({
   const [guestLimitReached,   setGuestLimitReached]   = useState(false);
   // null = authenticated user (no quota); 0–9 = guest with N analyses remaining today
   const [guestRemaining,      setGuestRemaining]      = useState(null);
+
   // 'simulated' (Phase 1 risk scores) or 'live' (real CDM data, Phase 2)
   const [conjSource,          setConjSource]          = useState('simulated');
 
@@ -701,17 +705,15 @@ export default function SatelliteTracker({
     for (const s of savedSats) toLoad.set(s.id, s.name);
     if (initialNoradId && !toLoad.has(initialNoradId)) toLoad.set(initialNoradId, null);
     if (!toLoad.size) return;
-    (async () => {
-      for (const [id, hint] of toLoad) {
-        try {
-          const res  = await client.get(`/satellites/${id}`);
-          const data = res.data?.data ?? res.data;
-          if (data?.tle_line1 && data?.tle_line2) {
-            addSatellite(data.name ?? hint ?? id, id, data.tle_line1, data.tle_line2);
-          }
-        } catch { /* ignore individual failures */ }
-      }
-    })();
+    Promise.all([...toLoad.entries()].map(async ([id, hint]) => {
+      try {
+        const res  = await client.get(`/satellites/${id}`);
+        const data = res.data?.data ?? res.data;
+        if (data?.tle_line1 && data?.tle_line2) {
+          addSatellite(data.name ?? hint ?? id, id, data.tle_line1, data.tle_line2);
+        }
+      } catch { /* ignore individual failures */ }
+    }));
   }, []); // intentional: fire once on mount
 
   // Init Three.js
@@ -805,13 +807,10 @@ export default function SatelliteTracker({
     }
 
     // Lighting
-    scene.add(new THREE.AmbientLight(0x111133, 1.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.8);
+    scene.add(new THREE.AmbientLight(0xffffff, 2.0));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
     sun.position.set(5, 2, 4);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0x112244, 0.4);
-    fill.position.set(-3, -1, -3);
-    scene.add(fill);
 
     // Mouse drag
     let dragging = false, prevX = 0, prevY = 0;
@@ -1279,7 +1278,7 @@ export default function SatelliteTracker({
       {/* Panel */}
       <div className="panel">
         <div className="panel-header">
-          <div className="panel-title">DEBRIS.MONITOR</div>
+          <div className="panel-title">SATVIEW.EU</div>
           <div className="panel-subtitle">CONJUNCTION RISK ANALYSIS // v0.1.0</div>
         </div>
 

@@ -25,6 +25,7 @@ const SPEED_PRESETS = [
   { label: "10min/s", ms: 1000 / 600 },
 ];
 
+
 // SGP4 simplified position propagation (Keplerian approximation for visualization)
 function tleToPosition(line1, line2, dateMs) {
   try {
@@ -417,17 +418,17 @@ export default function DebrisMonitor({ onTrack }) {
   const dragRef    = useRef({ active: false, last: null, velX: 0, velY: 0 });
   const fpsRef     = useRef({ frames: 0, last: Date.now(), val: 0 });
   const speedRef   = useRef(SPEED_PRESETS[0]);
-
   const [loading, setLoading]   = useState({ active: true, pct: 0, msg: "Initialising" });
   const [fps, setFps]           = useState(0);
   const [counts, setCounts]     = useState({ satellite: 0, debris: 0, rocket: 0, unknown: 0, total: 0 });
-  const [visible, setVisible]   = useState({ satellite: true, debris: true, rocket: true, unknown: true });
+  const [visible, setVisible]   = useState(() => {
+    try { return JSON.parse(localStorage.getItem('satview_visible') || 'null') || { satellite: true, debris: true, rocket: true, unknown: true }; } catch { return { satellite: true, debris: true, rocket: true, unknown: true }; }
+  });
   const [simDate, setSimDate]   = useState(new Date());
   const [speedIdx, setSpeedIdx] = useState(0);
   const [search, setSearch]     = useState("");
   const [selected, setSelected] = useState(null);
   const [bandCounts, setBandCounts] = useState({ LEO: 0, MEO: 0, "HEO/GEO": 0 });
-
   // Init Three.js scene
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -485,14 +486,11 @@ export default function DebrisMonitor({ onTrack }) {
     const glowMat = new THREE.MeshPhongMaterial({ color: 0x0033aa, transparent: true, opacity: 0.03, side: THREE.FrontSide });
     scene.add(new THREE.Mesh(glowGeo, glowMat));
 
-    // Lights
-    scene.add(new THREE.AmbientLight(0x111133, 1.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.8);
+    // Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 2.0));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
     sun.position.set(5, 3, 5);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0x112244, 0.4);
-    fill.position.set(-5, -3, -5);
-    scene.add(fill);
 
     const resize = () => {
       // Read dimensions from the parent container — not from the canvas element,
@@ -638,8 +636,8 @@ export default function DebrisMonitor({ onTrack }) {
   useEffect(() => {
     if (loading.active) return;
 
-    const dummy  = new THREE.Object3D();
-    const color  = new THREE.Color();
+    const dummy    = new THREE.Object3D();
+    const color    = new THREE.Color();
     let lastTick = Date.now();
 
     function animate() {
@@ -711,8 +709,9 @@ export default function DebrisMonitor({ onTrack }) {
   }, [loading.active]);
 
   // Keep a ref to visible so animation loop can read it without stale closure
-  const visibleRef = useRef(visible);
+  const visibleRef  = useRef(visible);
   useEffect(() => { visibleRef.current = visible; }, [visible]);
+  useEffect(() => { localStorage.setItem('satview_visible', JSON.stringify(visible)); }, [visible]);
 
   // Speed ref sync
   useEffect(() => {
