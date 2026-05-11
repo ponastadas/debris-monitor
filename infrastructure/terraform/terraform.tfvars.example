@@ -1,0 +1,5 @@
+# Copy this file to terraform.tfvars and fill in the values.
+# terraform.tfvars is gitignored — never commit it.
+
+hetzner_token  = "your-hetzner-api-token-here"
+ssh_public_key = "ssh-ed25519 AAAA... satview-hetzner"
