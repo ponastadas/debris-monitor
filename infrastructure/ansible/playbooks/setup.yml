@@ -1,0 +1,38 @@
+---
+- name: Provision SatView server
+  hosts: satview
+  become: yes
+
+  vars:
+    domain: satview.eu
+
+  pre_tasks:
+    - name: Wait for SSH
+      wait_for_connection:
+        delay: 5
+        timeout: 120
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+  roles:
+    - docker
+    - nginx
+
+  post_tasks:
+    - name: Create app directory
+      file:
+        path: /opt/satview
+        state: directory
+        mode: '0755'
+
+    - name: Print summary
+      debug:
+        msg:
+          - "Server provisioned successfully"
+          - "Docker: installed"
+          - "Nginx: running on port 80"
+          - "App dir: /opt/satview"
+          - "Next: copy docker-compose.yml and .env, then docker compose up"

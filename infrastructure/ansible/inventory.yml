@@ -1,0 +1,4 @@
+all:
+  hosts:
+    satview:
+      ansible_host: PLACEHOLDER_IP
