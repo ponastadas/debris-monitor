@@ -25,6 +25,7 @@ const SPEED_PRESETS = [
   { label: "10min/s", ms: 1000 / 600 },
 ];
 
+
 // SGP4 simplified position propagation (Keplerian approximation for visualization)
 function tleToPosition(line1, line2, dateMs) {
   try {
@@ -113,8 +114,8 @@ const STYLE = `
 
   .dm-root {
     display: flex;
-    height: 100vh;
-    width: 100vw;
+    height: 100%;
+    width: 100%;
     background: #020810;
     font-family: 'JetBrains Mono', monospace;
     color: #c8dff0;
@@ -372,6 +373,37 @@ const STYLE = `
     color: rgba(0,212,255,0.4);
     letter-spacing: 2px;
   }
+
+  /* ─── Responsive layout ─────────────────────────────────────────────── */
+
+  /* Tablet: narrow panel so the globe gets more space */
+  @media (max-width: 768px) {
+    .panel { width: 260px; min-width: 260px; }
+  }
+
+  /* Mobile: stack globe on top, panel below */
+  @media (max-width: 600px) {
+    .dm-root { flex-direction: column; }
+
+    .globe-wrap {
+      height: 55%;
+      flex: none;
+      width: 100%;
+    }
+
+    .panel {
+      width: 100% !important;
+      min-width: unset;
+      height: 45%;
+      border-left: none;
+      border-top: 1px solid rgba(0,212,255,0.12);
+      overflow: hidden;
+    }
+
+    /* HUD decorations that get in the way on small screens */
+    .fps-badge { font-size: 8px; letter-spacing: 1px; }
+    .globe-label { font-size: 8px; letter-spacing: 2px; bottom: 12px; }
+  }
 `;
 
 export default function DebrisMonitor({ onTrack }) {
@@ -386,26 +418,28 @@ export default function DebrisMonitor({ onTrack }) {
   const dragRef    = useRef({ active: false, last: null, velX: 0, velY: 0 });
   const fpsRef     = useRef({ frames: 0, last: Date.now(), val: 0 });
   const speedRef   = useRef(SPEED_PRESETS[0]);
-
   const [loading, setLoading]   = useState({ active: true, pct: 0, msg: "Initialising" });
   const [fps, setFps]           = useState(0);
   const [counts, setCounts]     = useState({ satellite: 0, debris: 0, rocket: 0, unknown: 0, total: 0 });
-  const [visible, setVisible]   = useState({ satellite: true, debris: true, rocket: true, unknown: true });
+  const [visible, setVisible]   = useState(() => {
+    try { return JSON.parse(localStorage.getItem('satview_visible') || 'null') || { satellite: true, debris: true, rocket: true, unknown: true }; } catch { return { satellite: true, debris: true, rocket: true, unknown: true }; }
+  });
   const [simDate, setSimDate]   = useState(new Date());
   const [speedIdx, setSpeedIdx] = useState(0);
   const [search, setSearch]     = useState("");
   const [selected, setSelected] = useState(null);
   const [bandCounts, setBandCounts] = useState({ LEO: 0, MEO: 0, "HEO/GEO": 0 });
-
   // Init Three.js scene
   useEffect(() => {
     const canvas = canvasRef.current;
-    const w = canvas.parentElement.clientWidth || window.innerWidth - 340;
-    const h = canvas.parentElement.clientHeight || window.innerHeight;
+    const parent = canvas.parentElement;
+    const w = parent.clientWidth  || window.innerWidth;
+    const h = parent.clientHeight || window.innerHeight;
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.setSize(w, h);
+    // false = don't overwrite the canvas CSS (which React sets to width/height 100%)
+    renderer.setSize(w, h, false);
     rendRef.current = renderer;
 
     const scene = new THREE.Scene();
@@ -414,24 +448,6 @@ export default function DebrisMonitor({ onTrack }) {
     const camera = new THREE.PerspectiveCamera(45, w / h, 0.01, 1000);
     camera.position.set(0, 0, 3.5);
     camRef.current = camera;
-
-    // Globe
-    const earthGeo  = new THREE.SphereGeometry(1, 64, 64);
-    const earthMat  = new THREE.MeshPhongMaterial({ color: 0x0a1628, emissive: 0x071020 });
-    scene.add(new THREE.Mesh(earthGeo, earthMat));
-
-    // Atmosphere glow
-    const atmGeo = new THREE.SphereGeometry(1.02, 32, 32);
-    const atmMat = new THREE.MeshPhongMaterial({
-      color: 0x003366, transparent: true, opacity: 0.08, side: THREE.FrontSide,
-    });
-    scene.add(new THREE.Mesh(atmGeo, atmMat));
-
-    // Lights
-    scene.add(new THREE.AmbientLight(0x223344, 2));
-    const sun = new THREE.DirectionalLight(0x4488cc, 3);
-    sun.position.set(5, 3, 5);
-    scene.add(sun);
 
     // Stars
     const starGeo = new THREE.BufferGeometry();
@@ -445,44 +461,74 @@ export default function DebrisMonitor({ onTrack }) {
       starPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
     }
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
-    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x334455, size: 0.15 })));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.06, transparent: true, opacity: 0.7 })));
+
+    // Globe
+    const earthGeo = new THREE.SphereGeometry(1, 64, 64);
+    const earthMat = new THREE.MeshPhongMaterial({
+      color: 0x1a4a8a, emissive: 0x050e20, specular: 0x2266bb, shininess: 12,
+    });
+    scene.add(new THREE.Mesh(earthGeo, earthMat));
+    new THREE.TextureLoader().load(
+      '/earth.jpg',
+      (tex) => { earthMat.map = tex; earthMat.needsUpdate = true; },
+      undefined,
+      () => {}
+    );
+
+    // Atmosphere
+    const atmGeo = new THREE.SphereGeometry(1.025, 64, 64);
+    const atmMat = new THREE.MeshPhongMaterial({ color: 0x2255cc, transparent: true, opacity: 0.07, side: THREE.FrontSide });
+    scene.add(new THREE.Mesh(atmGeo, atmMat));
+
+    // Outer glow
+    const glowGeo = new THREE.SphereGeometry(1.06, 64, 64);
+    const glowMat = new THREE.MeshPhongMaterial({ color: 0x0033aa, transparent: true, opacity: 0.03, side: THREE.FrontSide });
+    scene.add(new THREE.Mesh(glowGeo, glowMat));
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 2.0));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+    sun.position.set(5, 3, 5);
+    scene.add(sun);
 
     const resize = () => {
-      const w = canvas.clientWidth, h = canvas.clientHeight;
-      renderer.setSize(w, h);
+      // Read dimensions from the parent container — not from the canvas element,
+      // whose CSS dimensions Three.js may have overwritten with px values.
+      const p = canvas.parentElement;
+      if (!p) return;
+      const w = p.clientWidth;
+      const h = p.clientHeight;
+      if (!w || !h) return;
+      renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };
+    // ResizeObserver catches flex-layout changes (panel stacking) that window
+    // resize alone misses.
+    const ro = new ResizeObserver(resize);
+    ro.observe(parent);
     window.addEventListener("resize", resize);
 
     return () => {
+      ro.disconnect();
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animRef.current);
       renderer.dispose();
     };
   }, []);
 
-  // Fetch TLE data
+  // Fetch TLE data — prefers local catalog API, falls back to direct CelesTrak group fetches.
+  // Local catalog is populated by `php artisan satellites:sync` (scheduled every 6 hours).
+  // When catalog is empty (fresh dev environment), CelesTrak fetches still work as before.
+  const [dataSource, setDataSource] = useState(null); // 'local' | 'celestrak' | null
+
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      const allObjects = [];
-      for (let i = 0; i < TLE_GROUPS.length; i++) {
-        const g = TLE_GROUPS[i];
-        setLoading({ active: true, pct: Math.round((i / TLE_GROUPS.length) * 90), msg: `Loading ${g.type} data…` });
-        try {
-          const res  = await fetch(g.url);
-          const text = await res.text();
-          allObjects.push(...parseTleText(text, g.type));
-        } catch {
-          // skip failed group
-        }
-        if (cancelled) return;
-      }
 
+    function finalise(allObjects, source) {
+      if (cancelled) return;
       objectsRef.current = allObjects;
-
-      // Count bands
       const bands = { LEO: 0, MEO: 0, "HEO/GEO": 0 };
       const cnts  = { satellite: 0, debris: 0, rocket: 0, unknown: 0, total: 0 };
       allObjects.forEach(o => {
@@ -493,11 +539,54 @@ export default function DebrisMonitor({ onTrack }) {
       });
       setCounts(cnts);
       setBandCounts(bands);
-
+      setDataSource(source);
       setLoading({ active: true, pct: 95, msg: "Building scene…" });
       buildMesh(allObjects);
       setLoading({ active: false, pct: 100, msg: "Done" });
     }
+
+    async function loadFromLocalCatalog() {
+      setLoading({ active: true, pct: 15, msg: "Loading local catalog…" });
+      // fetch() uses browser cache automatically (Cache-Control + ETag handled transparently).
+      const res  = await fetch("/api/catalog");
+      if (!res.ok) return null;
+      const json = await res.json();
+      const sats = json?.data?.satellites ?? [];
+      if (!sats.length) return null;
+      // Response shape: { name, type, line1, line2 } — norad_id is in line1[2:7] if needed.
+      return sats.map(s => ({ name: s.name, line1: s.line1, line2: s.line2, type: s.type }));
+    }
+
+    async function loadFromCelesTrak() {
+      const allObjects = [];
+      for (let i = 0; i < TLE_GROUPS.length; i++) {
+        if (cancelled) return allObjects;
+        const g = TLE_GROUPS[i];
+        setLoading({ active: true, pct: Math.round((i / TLE_GROUPS.length) * 80) + 10, msg: `Loading ${g.type} data…` });
+        try {
+          const res  = await fetch(g.url);
+          const text = await res.text();
+          allObjects.push(...parseTleText(text, g.type));
+        } catch { /* skip failed group */ }
+      }
+      return allObjects;
+    }
+
+    async function load() {
+      try {
+        const local = await loadFromLocalCatalog();
+        if (local && local.length > 0 && !cancelled) {
+          finalise(local, 'local');
+          return;
+        }
+      } catch { /* local catalog unavailable — fall through */ }
+
+      if (cancelled) return;
+      setLoading({ active: true, pct: 10, msg: "Local catalog empty — fetching from CelesTrak…" });
+      const remote = await loadFromCelesTrak();
+      if (!cancelled) finalise(remote, 'celestrak');
+    }
+
     load();
     return () => { cancelled = true; };
   }, []);
@@ -529,6 +618,7 @@ export default function DebrisMonitor({ onTrack }) {
       } else {
         dummy.position.set(0, 0, 0);
       }
+      dummy.scale.setScalar(obj.type === 'debris' ? 0.5 : 1);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
       color.copy(COLORS[obj.type] || COLORS.unknown);
@@ -546,8 +636,8 @@ export default function DebrisMonitor({ onTrack }) {
   useEffect(() => {
     if (loading.active) return;
 
-    const dummy  = new THREE.Object3D();
-    const color  = new THREE.Color();
+    const dummy    = new THREE.Object3D();
+    const color    = new THREE.Color();
     let lastTick = Date.now();
 
     function animate() {
@@ -589,7 +679,7 @@ export default function DebrisMonitor({ onTrack }) {
         }
 
         const pos = tleToPosition(obj.line1, obj.line2, simNow);
-        dummy.scale.setScalar(1);
+        dummy.scale.setScalar(obj.type === 'debris' ? 0.5 : 1);
         if (pos) dummy.position.copy(pos);
         else dummy.position.set(0, 0, 0);
         dummy.updateMatrix();
@@ -619,8 +709,9 @@ export default function DebrisMonitor({ onTrack }) {
   }, [loading.active]);
 
   // Keep a ref to visible so animation loop can read it without stale closure
-  const visibleRef = useRef(visible);
+  const visibleRef  = useRef(visible);
   useEffect(() => { visibleRef.current = visible; }, [visible]);
+  useEffect(() => { localStorage.setItem('satview_visible', JSON.stringify(visible)); }, [visible]);
 
   // Speed ref sync
   useEffect(() => {
@@ -646,7 +737,7 @@ export default function DebrisMonitor({ onTrack }) {
 
   const onMouseUp = useCallback((e) => {
     const drag = dragRef.current;
-    if (!drag) return;
+    if (!drag?.start) return;
     drag.active = false;
 
     // If mouse barely moved, treat as a click → raycast
@@ -693,11 +784,16 @@ export default function DebrisMonitor({ onTrack }) {
           <div className="corner-hud tl" /><div className="corner-hud tr" />
           <div className="corner-hud bl" /><div className="corner-hud br" />
           <div className="fps-badge">{fps} FPS · {counts.total.toLocaleString()} OBJECTS</div>
-          <div className="globe-label">DEBRIS MONITOR · REAL-TIME CATALOG</div>
+          <div className="globe-label">
+            SATVIEW ·{" "}
+            {dataSource === 'local'     && "LOCAL CATALOG"}
+            {dataSource === 'celestrak' && "CELESTRAK DATA"}
+            {!dataSource               && "REAL-TIME CATALOG"}
+          </div>
 
           {loading.active && (
             <div className="loading-overlay">
-              <div className="loading-title">DEBRIS MONITOR</div>
+              <div className="loading-title">SATVIEW</div>
               <div className="loading-bar-wrap">
                 <div className="loading-bar" style={{ width: `${loading.pct}%` }} />
               </div>
@@ -709,7 +805,7 @@ export default function DebrisMonitor({ onTrack }) {
         {/* Side panel */}
         <div className="panel">
           <div className="panel-header">
-            <div className="panel-title">DEBRIS MONITOR</div>
+            <div className="panel-title">SATVIEW</div>
             <div className="panel-sub">REAL-TIME CATALOG · {counts.total.toLocaleString()} OBJECTS</div>
           </div>
 

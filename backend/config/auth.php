@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AdminAccount;
 use App\Models\User;
 
 return [
@@ -42,6 +43,20 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // Explicit sanctum guard scoped to the users provider.
+        // Sanctum 4.x filters tokens by tokenable_type when a provider is configured,
+        // so AdminAccount tokens are rejected here with 401 (not a 500 crash).
+        'sanctum' => [
+            'driver'   => 'sanctum',
+            'provider' => 'users',
+        ],
+
+        // Separate admin guard — only accepts tokens where tokenable_type = AdminAccount.
+        'admin' => [
+            'driver'   => 'sanctum',
+            'provider' => 'admin_accounts',
+        ],
     ],
 
     /*
@@ -64,13 +79,13 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', User::class),
+            'model'  => env('AUTH_MODEL', User::class),
         ],
 
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+        'admin_accounts' => [
+            'driver' => 'eloquent',
+            'model'  => AdminAccount::class,
+        ],
     ],
 
     /*

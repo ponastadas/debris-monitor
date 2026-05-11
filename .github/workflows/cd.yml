@@ -1,40 +1,35 @@
 name: CD
 
+# Triggered only after CI passes — guarantees we never deploy untested code.
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches:
       - develop   # → staging
       - main      # → production
 
+# Minimum workflow-level permissions; jobs declare additional ones as needed.
+permissions:
+  contents: read
+
+# Never run two deploys for the same environment in parallel.
+# New deploys queue instead of cancelling — we always want the latest code deployed.
+concurrency:
+  group: deploy-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  BACKEND_IMAGE_BASE: ghcr.io/ponastadas/debris-monitor-backend
+  FRONTEND_IMAGE_BASE: ghcr.io/ponastadas/debris-monitor-frontend
 
 jobs:
-  # ── Determine environment ──────────────────────────────────
-  config:
-    name: "Resolve target environment"
-    runs-on: ubuntu-latest
-    outputs:
-      environment: ${{ steps.env.outputs.environment }}
-      tag: ${{ steps.env.outputs.tag }}
-
-    steps:
-      - id: env
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
-            echo "tag=latest" >> $GITHUB_OUTPUT
-          else
-            echo "environment=staging" >> $GITHUB_OUTPUT
-            echo "tag=staging" >> $GITHUB_OUTPUT
-          fi
-
   # ── Build & push Docker images ─────────────────────────────
   build:
-    name: "Docker Build & Push"
+    name: "Build & Push — ${{ matrix.service }}"
     runs-on: ubuntu-latest
-    needs: config
+    # Only build when CI passed (not failed/cancelled)
+    if: github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
       packages: write
@@ -44,98 +39,239 @@ jobs:
         service: [backend, frontend]
 
     steps:
+      # Check out the exact commit that CI tested
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Log in to Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata
+      - name: Resolve image name and environment tag
+        id: meta-args
+        run: |
+          if [[ "${{ matrix.service }}" == "backend" ]]; then
+            echo "image=${{ env.BACKEND_IMAGE_BASE }}" >> $GITHUB_OUTPUT
+          else
+            echo "image=${{ env.FRONTEND_IMAGE_BASE }}" >> $GITHUB_OUTPUT
+          fi
+          if [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
+            echo "env_tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "env_tag=staging" >> $GITHUB_OUTPUT
+          fi
+
+      # Produces two tags: sha-<short> (immutable, used in deploy) and latest/staging (convenience)
+      - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+          images: ${{ steps.meta-args.outputs.image }}
           tags: |
-            type=raw,value=${{ needs.config.outputs.tag }}
-            type=sha,prefix=,suffix=,format=short
+            type=raw,value=${{ steps.meta-args.outputs.env_tag }}
+            type=sha,prefix=sha-,suffix=,format=short
 
-      - name: Build and push ${{ matrix.service }}
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: ./${{ matrix.service }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            APP_ENV=${{ needs.config.outputs.environment }}
+          # Scope cache per service so backend and frontend don't share layers
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
 
-  # ── Deploy ─────────────────────────────────────────────────
+  # ── Deploy to Staging ──────────────────────────────────────
   deploy-staging:
     name: "Deploy → Staging"
     runs-on: ubuntu-latest
-    needs: [config, build]
-    if: needs.config.outputs.environment == 'staging'
+    needs: build
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'develop'
     environment:
       name: staging
-      url: https://staging.debris-monitor.com
+      url: https://staging.satview.eu
 
     steps:
+      # Copy the latest compose file to the staging server before SSH
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Deploy to staging via SSH
-        uses: appleboy/ssh-action@v1
+      - name: Upload compose file to staging server
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
           key: ${{ secrets.STAGING_SSH_KEY }}
+          source: "docker-compose.staging.yml"
+          target: "~/satview-staging/"
+          strip_components: 0
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          BACKEND_IMAGE_BASE: ${{ env.BACKEND_IMAGE_BASE }}
+          FRONTEND_IMAGE_BASE: ${{ env.FRONTEND_IMAGE_BASE }}
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          envs: DEPLOY_SHA,GHCR_TOKEN,GHCR_USER,BACKEND_IMAGE_BASE,FRONTEND_IMAGE_BASE
           script: |
-            cd ~/debris-monitor
-            git pull origin develop
-            docker compose -f docker-compose.staging.yml pull
-            docker compose -f docker-compose.staging.yml up -d --remove-orphans
-            docker compose -f docker-compose.staging.yml exec -T backend php artisan migrate --force
-            docker image prune -f
-            echo "Staging deployed at $(date)"
+            #!/bin/bash
+            set -euo pipefail
 
-      - name: Notify deployment
-        run: echo "Staging deployed — commit ${{ github.sha }}"
+            SHORT_SHA=$(echo "${DEPLOY_SHA}" | cut -c1-7)
+            BACKEND_IMAGE="${BACKEND_IMAGE_BASE}:sha-${SHORT_SHA}"
+            FRONTEND_IMAGE="${FRONTEND_IMAGE_BASE}:sha-${SHORT_SHA}"
+            COMPOSE_FILE=~/satview-staging/docker-compose.staging.yml
+            COMPOSE="docker compose -f ${COMPOSE_FILE} --project-name satview-staging"
 
+            echo "==> Deploying sha-${SHORT_SHA} to staging"
+
+            echo "--- Authenticating with GHCR"
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+
+            echo "--- Pulling images"
+            BACKEND_IMAGE="${BACKEND_IMAGE}" FRONTEND_IMAGE="${FRONTEND_IMAGE}" \
+              ${COMPOSE} pull backend frontend scheduler worker
+
+            echo "--- Backing up database (before migration)"
+            mkdir -p ~/backups
+            ${COMPOSE} exec -T db sh -c \
+              'mysqldump -u root -p"${MYSQL_ROOT_PASSWORD}" "${MYSQL_DATABASE}"' \
+              > ~/backups/staging-pre-deploy-$(date +%Y%m%d%H%M%S).sql
+
+            echo "--- Starting containers"
+            BACKEND_IMAGE="${BACKEND_IMAGE}" FRONTEND_IMAGE="${FRONTEND_IMAGE}" \
+              ${COMPOSE} up -d --remove-orphans
+
+            echo "--- Running migrations"
+            ${COMPOSE} exec -T backend php artisan migrate --force
+
+            echo "--- Health check (60 s timeout)"
+            for i in $(seq 1 12); do
+              if curl -sf --max-time 5 https://staging.satview.eu/api/health > /dev/null 2>&1; then
+                echo "    Health check passed"
+                break
+              fi
+              if [ "$i" -eq 12 ]; then
+                echo "ERROR: Health check failed — check: docker compose -f ${COMPOSE_FILE} --project-name satview-staging logs backend"
+                exit 1
+              fi
+              echo "    Waiting (${i}/12)…"
+              sleep 5
+            done
+
+            echo "--- Pruning images older than 72 h (preserves recent tags for rollback)"
+            docker image prune -f --filter "until=72h" || true
+
+            echo "==> Staging deployed: sha-${SHORT_SHA}"
+
+  # ── Deploy to Production ───────────────────────────────────
   deploy-production:
     name: "Deploy → Production"
     runs-on: ubuntu-latest
-    needs: [config, build]
-    if: needs.config.outputs.environment == 'production'
+    needs: build
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
     environment:
       name: production
-      url: https://debris-monitor.com
+      url: https://satview.eu
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Deploy to production via SSH
-        uses: appleboy/ssh-action@v1
+      - name: Upload compose file to production server
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            cd ~/debris-monitor
-            git pull origin main
-            docker compose pull
-            docker compose up -d --remove-orphans
-            docker compose exec -T backend php artisan migrate --force
-            docker compose exec -T backend php artisan config:cache
-            docker compose exec -T backend php artisan route:cache
-            docker image prune -f
-            echo "Production deployed at $(date)"
+          source: "docker-compose.yml"
+          target: "~/satview-production/"
+          strip_components: 0
 
-      - name: Notify deployment
-        run: echo "Production deployed — commit ${{ github.sha }}"
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          BACKEND_IMAGE_BASE: ${{ env.BACKEND_IMAGE_BASE }}
+          FRONTEND_IMAGE_BASE: ${{ env.FRONTEND_IMAGE_BASE }}
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          envs: DEPLOY_SHA,GHCR_TOKEN,GHCR_USER,BACKEND_IMAGE_BASE,FRONTEND_IMAGE_BASE
+          script: |
+            #!/bin/bash
+            set -euo pipefail
+
+            SHORT_SHA=$(echo "${DEPLOY_SHA}" | cut -c1-7)
+            BACKEND_IMAGE="${BACKEND_IMAGE_BASE}:sha-${SHORT_SHA}"
+            FRONTEND_IMAGE="${FRONTEND_IMAGE_BASE}:sha-${SHORT_SHA}"
+            COMPOSE_FILE=~/satview-production/docker-compose.yml
+            COMPOSE="docker compose -f ${COMPOSE_FILE} --project-name satview-production"
+
+            echo "==> Deploying sha-${SHORT_SHA} to production"
+
+            echo "--- Authenticating with GHCR"
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+
+            echo "--- Pulling images"
+            BACKEND_IMAGE="${BACKEND_IMAGE}" FRONTEND_IMAGE="${FRONTEND_IMAGE}" \
+              ${COMPOSE} pull backend frontend scheduler worker
+
+            echo "--- Backing up database (before migration)"
+            mkdir -p ~/backups
+            ${COMPOSE} exec -T db sh -c \
+              'mysqldump -u root -p"${MYSQL_ROOT_PASSWORD}" "${MYSQL_DATABASE}"' \
+              > ~/backups/prod-pre-deploy-$(date +%Y%m%d%H%M%S).sql
+
+            echo "--- Starting containers"
+            BACKEND_IMAGE="${BACKEND_IMAGE}" FRONTEND_IMAGE="${FRONTEND_IMAGE}" \
+              ${COMPOSE} up -d --remove-orphans
+
+            echo "--- Running migrations"
+            ${COMPOSE} exec -T backend php artisan migrate --force
+
+            echo "--- Caching Laravel config + routes"
+            ${COMPOSE} exec -T backend php artisan config:cache
+            ${COMPOSE} exec -T backend php artisan route:cache
+
+            echo "--- Health check (60 s timeout)"
+            for i in $(seq 1 12); do
+              if curl -sf --max-time 5 https://satview.eu/api/health > /dev/null 2>&1; then
+                echo "    Health check passed"
+                break
+              fi
+              if [ "$i" -eq 12 ]; then
+                echo "ERROR: Health check failed — check: docker compose -f ${COMPOSE_FILE} --project-name satview-production logs backend"
+                exit 1
+              fi
+              echo "    Waiting (${i}/12)…"
+              sleep 5
+            done
+
+            echo "--- Pruning images older than 72 h (preserves recent tags for rollback)"
+            docker image prune -f --filter "until=72h" || true
+
+            echo "==> Production deployed: sha-${SHORT_SHA}"
