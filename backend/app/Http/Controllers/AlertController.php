@@ -27,18 +27,14 @@ class AlertController extends Controller
             );
         }
 
-        $noradIds = $request->user()
-            ->watchedSatellites()
-            ->pluck('norad_id');
+        $sourceConfigured = ! empty(config('services.space_track.user'))
+            && ! empty(config('services.space_track.pass'));
 
-        if ($noradIds->isEmpty()) {
-            return $this->success([]);
-        }
+        $noradIds = $request->user()->watchedSatellites()->pluck('norad_id');
 
-        $rows = ConjunctionAlert::upcoming()
-            ->whereIn('primary_norad_id', $noradIds)
-            ->orderBy('tca')
-            ->get();
+        $rows = $noradIds->isNotEmpty()
+            ? ConjunctionAlert::upcoming()->whereIn('primary_norad_id', $noradIds)->orderBy('tca')->get()
+            : collect();
 
         $alerts = $rows->map(fn ($a) => [
             'id'                 => $a->id,
@@ -61,9 +57,10 @@ class AlertController extends Controller
         return response()->json([
             'success' => true,
             'meta'    => [
-                'source'       => $hasCdm ? 'space_track_cdm' : 'sgp4',
-                'last_updated' => $lastUpdated?->toIso8601String(),
-                'coverage'     => 'High-risk events · 5-day horizon',
+                'source'            => $rows->isEmpty() ? null : ($hasCdm ? 'space_track_cdm' : 'sgp4'),
+                'source_configured' => $sourceConfigured,
+                'last_updated'      => $lastUpdated?->toIso8601String(),
+                'coverage'          => 'High-risk events · 5-day horizon',
             ],
             'data'    => $alerts,
         ]);

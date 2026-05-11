@@ -38,7 +38,7 @@ class ConjunctionAlertNotification extends Notification implements ShouldQueue
             ->line("| Time until TCA | {$hoursAway} hours |")
             ->line("| Predicted miss distance | {$alert->miss_distance_km} km |")
             ->line("| Risk score | {$alert->risk_score} / 100 ({$risk}) |")
-            ->action('Track in Debris Monitor', $trackerUrl)
+            ->action('Track in SatView', $trackerUrl)
             ->line('This alert was generated automatically. Miss distances are estimates based on current TLE data and simplified propagation. Always verify with authoritative sources before taking action.');
     }
 

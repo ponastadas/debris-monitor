@@ -25,9 +25,9 @@ class PageSeeder extends Seeder
             [
                 'title'            => 'Privacy Policy',
                 'slug'             => 'privacy-policy',
-                'excerpt'          => 'How Debris Monitor collects, uses, and protects your personal data.',
-                'meta_title'       => 'Privacy Policy — Debris Monitor',
-                'meta_description' => 'Debris Monitor privacy policy: data collected, how it is used, your rights under GDPR, and how to contact us.',
+                'excerpt'          => 'How SatView collects, uses, and protects your personal data.',
+                'meta_title'       => 'Privacy Policy — SatView',
+                'meta_description' => 'SatView privacy policy: data collected, how it is used, your rights under GDPR, and how to contact us.',
                 'status'           => 'published',
                 'published_at'     => $now,
                 'content'          => <<<'MD'
@@ -35,7 +35,7 @@ class PageSeeder extends Seeder
 
 **Last updated:** April 2026
 
-This Privacy Policy explains how Debris Monitor ("we", "us", "our") collects, uses, and protects your personal data when you use our satellite conjunction monitoring platform at debris-monitor.com (the "Service").
+This Privacy Policy explains how SatView ("we", "us", "our") collects, uses, and protects your personal data when you use our satellite conjunction monitoring platform at satview.eu (the "Service").
 
 We are committed to protecting your privacy and processing your data lawfully. This policy applies to all users, including free and paid accounts, API users, and website visitors.
 
@@ -43,10 +43,10 @@ We are committed to protecting your privacy and processing your data lawfully. T
 
 ## 1. Who We Are
 
-Debris Monitor is a satellite conjunction risk monitoring platform. For data protection purposes, Debris Monitor is the data controller responsible for your personal data.
+SatView is a satellite conjunction risk monitoring platform. For data protection purposes, SatView is the data controller responsible for your personal data.
 
 **Contact:** [Insert company address and registration number]
-**Email:** privacy@debris-monitor.com
+**Email:** privacy@satview.eu
 
 ---
 
@@ -105,7 +105,7 @@ If you are located in the EU or UK, you have the following rights:
 - **Right to object**: object to processing based on legitimate interests
 - **Right to withdraw consent**: withdraw analytics consent at any time via the cookie settings
 
-To exercise any of these rights, email privacy@debris-monitor.com. We will respond within 30 days. You also have the right to lodge a complaint with your national data protection authority.
+To exercise any of these rights, email privacy@satview.eu. We will respond within 30 days. You also have the right to lodge a complaint with your national data protection authority.
 
 ---
 
@@ -144,16 +144,16 @@ We may update this policy periodically. We will notify you of significant change
 ## 10. Contact
 
 For privacy-related questions or to exercise your rights, contact us at:
-**privacy@debris-monitor.com**
+**privacy@satview.eu**
 MD,
             ],
 
             [
                 'title'            => 'Cookie Policy',
                 'slug'             => 'cookie-policy',
-                'excerpt'          => 'What cookies Debris Monitor uses and how to manage your preferences.',
-                'meta_title'       => 'Cookie Policy — Debris Monitor',
-                'meta_description' => 'Debris Monitor cookie policy: which cookies are used, their purpose, duration, and how to manage your preferences.',
+                'excerpt'          => 'What cookies SatView uses and how to manage your preferences.',
+                'meta_title'       => 'Cookie Policy — SatView',
+                'meta_description' => 'SatView cookie policy: which cookies are used, their purpose, duration, and how to manage your preferences.',
                 'status'           => 'published',
                 'published_at'     => $now,
                 'content'          => <<<'MD'
@@ -161,7 +161,7 @@ MD,
 
 **Last updated:** April 2026
 
-This Cookie Policy explains how Debris Monitor uses cookies and similar technologies on our website.
+This Cookie Policy explains how SatView uses cookies and similar technologies on our website.
 
 ---
 
@@ -226,16 +226,16 @@ Note that disabling strictly necessary cookies will affect the functionality of 
 
 ## Contact
 
-For questions about our cookie use, email: privacy@debris-monitor.com
+For questions about our cookie use, email: privacy@satview.eu
 MD,
             ],
 
             [
                 'title'            => 'Terms of Service',
                 'slug'             => 'terms',
-                'excerpt'          => 'The terms and conditions governing your use of Debris Monitor.',
-                'meta_title'       => 'Terms of Service — Debris Monitor',
-                'meta_description' => 'Read the Debris Monitor Terms of Service: account responsibilities, API usage, billing, and prohibited uses.',
+                'excerpt'          => 'The terms and conditions governing your use of SatView.',
+                'meta_title'       => 'Terms of Service — SatView',
+                'meta_description' => 'Read the SatView Terms of Service: account responsibilities, API usage, billing, and prohibited uses.',
                 'status'           => 'published',
                 'published_at'     => $now,
                 'content'          => <<<'MD'
@@ -243,7 +243,7 @@ MD,
 
 **Last updated:** April 2026
 
-Please read these Terms of Service ("Terms") carefully before using the Debris Monitor satellite conjunction monitoring platform ("Service") operated by Debris Monitor ("we", "us", "our").
+Please read these Terms of Service ("Terms") carefully before using the SatView satellite conjunction monitoring platform ("Service") operated by SatView ("we", "us", "our").
 
 By accessing or using the Service, you agree to be bound by these Terms.
 
@@ -260,7 +260,7 @@ By registering for an account or using the Service in any way, you confirm that 
 
 ## 2. Description of Service
 
-Debris Monitor provides satellite conjunction risk monitoring data, API access, and related tools. The Service uses publicly available orbital data from sources including CelesTrak and Space-Track.
+SatView provides satellite conjunction risk monitoring data, API access, and related tools. The Service uses publicly available orbital data from sources including CelesTrak and Space-Track.
 
 **Data disclaimer**: Orbital data and conjunction risk assessments are provided for informational purposes only. They should not be relied upon as the sole basis for operational space safety decisions.
 
@@ -325,7 +325,7 @@ Upon termination, your right to use the Service ceases immediately. We may retai
 
 ## 8. Intellectual Property
 
-The Service, including all content, code, and branding, is owned by Debris Monitor and protected by applicable intellectual property laws. You are granted a limited, non-exclusive, non-transferable licence to use the Service in accordance with these Terms.
+The Service, including all content, code, and branding, is owned by SatView and protected by applicable intellectual property laws. You are granted a limited, non-exclusive, non-transferable licence to use the Service in accordance with these Terms.
 
 ---
 
@@ -357,22 +357,22 @@ We may modify these Terms at any time. We will notify you of significant changes
 
 ## 13. Contact
 
-For questions about these Terms, contact: legal@debris-monitor.com
+For questions about these Terms, contact: legal@satview.eu
 MD,
             ],
 
             [
                 'title'            => 'About',
                 'slug'             => 'about',
-                'excerpt'          => 'What Debris Monitor is, why it exists, and how it works.',
-                'meta_title'       => 'About Debris Monitor',
-                'meta_description' => 'Debris Monitor provides real-time satellite conjunction risk data via a clean API for developers and space startups.',
+                'excerpt'          => 'What SatView is, why it exists, and how it works.',
+                'meta_title'       => 'About SatView',
+                'meta_description' => 'SatView provides real-time satellite conjunction risk data via a clean API for developers and space startups.',
                 'status'           => 'published',
                 'published_at'     => $now,
                 'content'          => <<<'MD'
-# About Debris Monitor
+# About SatView
 
-Debris Monitor is a satellite conjunction risk monitoring platform designed for developers, researchers, and space startups who need programmatic access to orbital safety data.
+SatView is a satellite conjunction risk monitoring platform designed for developers, researchers, and space startups who need programmatic access to orbital safety data.
 
 ---
 
@@ -380,7 +380,7 @@ Debris Monitor is a satellite conjunction risk monitoring platform designed for 
 
 Low Earth Orbit is getting crowded. As the number of active satellites and tracked debris objects grows, conjunction events — close approaches between orbiting objects — are increasingly frequent. Understanding and monitoring these risks requires access to current orbital data and reliable risk scoring.
 
-Existing tools are either gated behind expensive enterprise contracts, too complex for developer use, or lack proper API access. Debris Monitor fills that gap.
+Existing tools are either gated behind expensive enterprise contracts, too complex for developer use, or lack proper API access. SatView fills that gap.
 
 ---
 
@@ -406,7 +406,7 @@ We do not generate or certify this data. It is sourced from publicly operated se
 
 ## Our Approach
 
-We built Debris Monitor with a developer-first mindset:
+We built SatView with a developer-first mindset:
 - OpenAPI-documented endpoints
 - Freemium access (10 analyses/day without an account)
 - Tiered API keys for integration into your own applications
@@ -418,22 +418,22 @@ We built Debris Monitor with a developer-first mindset:
 
 Got a question, found a bug, or want to discuss an enterprise plan?
 
-Email: hello@debris-monitor.com
+Email: hello@satview.eu
 MD,
             ],
 
             [
                 'title'            => 'How It Works',
                 'slug'             => 'how-it-works',
-                'excerpt'          => 'The orbital mechanics, data pipelines, and limitations behind Debris Monitor.',
-                'meta_title'       => 'How It Works — Debris Monitor',
-                'meta_description' => 'How Debris Monitor uses TLE data, SGP4 propagation, and Space-Track CDM to compute satellite positions and conjunction risk.',
+                'excerpt'          => 'The orbital mechanics, data pipelines, and limitations behind SatView.',
+                'meta_title'       => 'How It Works — SatView',
+                'meta_description' => 'How SatView uses TLE data, SGP4 propagation, and Space-Track CDM to compute satellite positions and conjunction risk.',
                 'status'           => 'published',
                 'published_at'     => $now,
                 'content'          => <<<'MD'
 # How It Works
 
-Debris Monitor combines publicly available orbital data with standard propagation algorithms to compute satellite positions and conjunction risk. This page explains the technical approach — and its limitations.
+SatView combines publicly available orbital data with standard propagation algorithms to compute satellite positions and conjunction risk. This page explains the technical approach — and its limitations.
 
 ---
 
@@ -535,7 +535,7 @@ Alerts are generated from the most recent data available. If CDM data was ingest
 
 ## Limitations and Disclaimer
 
-Debris Monitor is a **demonstration and research platform**. It is not certified for operational space safety decisions. Conjunction probability estimates are approximate. Do not use this data as the sole basis for satellite avoidance maneuvers or mission-critical decisions.
+SatView is a **demonstration and research platform**. It is not certified for operational space safety decisions. Conjunction probability estimates are approximate. Do not use this data as the sole basis for satellite avoidance maneuvers or mission-critical decisions.
 
 For operational conjunction screening, consult your launch provider, operator's flight dynamics team, or the [Space-Track.org](https://space-track.org) platform directly.
 MD,
@@ -544,9 +544,9 @@ MD,
             [
                 'title'            => 'Contact',
                 'slug'             => 'contact',
-                'excerpt'          => 'Get in touch with the Debris Monitor team.',
-                'meta_title'       => 'Contact — Debris Monitor',
-                'meta_description' => 'Contact the Debris Monitor team for support, enterprise enquiries, or general questions.',
+                'excerpt'          => 'Get in touch with the SatView team.',
+                'meta_title'       => 'Contact — SatView',
+                'meta_description' => 'Contact the SatView team for support, enterprise enquiries, or general questions.',
                 'status'           => 'published',
                 'published_at'     => $now,
                 'content'          => <<<'MD'
@@ -558,7 +558,7 @@ We are happy to hear from you.
 
 ## General Enquiries
 
-**Email:** hello@debris-monitor.com
+**Email:** hello@satview.eu
 
 For general questions about the platform, partnership enquiries, or feedback.
 
@@ -566,7 +566,7 @@ For general questions about the platform, partnership enquiries, or feedback.
 
 ## Technical Support
 
-**Email:** support@debris-monitor.com
+**Email:** support@satview.eu
 
 For questions about the API, data issues, or account problems. Please include your account email and a description of the issue.
 
@@ -574,7 +574,7 @@ For questions about the API, data issues, or account problems. Please include yo
 
 ## Privacy and Data Requests
 
-**Email:** privacy@debris-monitor.com
+**Email:** privacy@satview.eu
 
 For data subject requests (GDPR access, deletion, portability), or questions about our privacy practices.
 
@@ -582,7 +582,7 @@ For data subject requests (GDPR access, deletion, portability), or questions abo
 
 ## Enterprise Plans
 
-If you need higher rate limits, custom integrations, or a tailored data agreement, contact us at hello@debris-monitor.com with a brief description of your use case.
+If you need higher rate limits, custom integrations, or a tailored data agreement, contact us at hello@satview.eu with a brief description of your use case.
 
 ---
 
@@ -592,7 +592,7 @@ We aim to respond to all enquiries within **2 business days**.
 
 ---
 
-*Debris Monitor is a product of [Company Name], registered at [Address].*
+*SatView is a product of [Company Name], registered at [Address].*
 MD,
             ],
         ];

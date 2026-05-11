@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router-dom';
 
 // ── Stub globe/tracker modules that break in jsdom ────────────────────────────
 
+vi.mock('jspdf', () => ({ jsPDF: vi.fn(() => ({ save: vi.fn(), text: vi.fn(), setFontSize: vi.fn(), setFont: vi.fn(), addPage: vi.fn() })) }));
+
 vi.mock('../DebrisMonitor',     () => ({ default: () => <div data-testid="debris-monitor" /> }));
 vi.mock('../satellite-tracker', () => ({ default: () => <div data-testid="satellite-tracker" /> }));
 vi.mock('../ConjunctionAlerts', () => ({ default: () => <div data-testid="conjunction-alerts" /> }));

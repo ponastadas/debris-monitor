@@ -43,7 +43,7 @@ class AdminMfaService
     public function getQrUri(AdminAccount $admin, string $secret): string
     {
         return $this->totp->getQRCodeUrl(
-            config('app.name', 'Debris Monitor'),
+            config('app.name', 'SatView'),
             $admin->email,
             $secret,
         );

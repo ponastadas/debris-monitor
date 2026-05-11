@@ -10,8 +10,8 @@ const STYLE = `
 
   .tracker-root {
     display: flex;
-    height: 100vh;
-    width: 100vw;
+    height: 100%;
+    width: 100%;
     background: #020810;
     font-family: 'JetBrains Mono', monospace;
     color: #c8dff0;
@@ -144,31 +144,13 @@ const STYLE = `
     color: #00d4ff;
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    padding: 8px 12px;
+    padding: 8px 32px 8px 12px;
     outline: none;
     transition: border-color 0.2s;
     letter-spacing: 1px;
   }
   .norad-input:focus { border-color: rgba(0,212,255,0.6); }
   .norad-input::placeholder { color: rgba(0,212,255,0.2); font-size: 10px; }
-
-  .track-btn {
-    background: rgba(0,212,255,0.1);
-    border: 1px solid rgba(0,212,255,0.35);
-    color: #00d4ff;
-    font-family: 'Orbitron', sans-serif;
-    font-size: 8px;
-    letter-spacing: 2px;
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-  }
-  .track-btn:hover:not(:disabled) {
-    background: rgba(0,212,255,0.2);
-    border-color: #00d4ff;
-  }
-  .track-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .quick-ids {
     display: flex;
@@ -188,6 +170,62 @@ const STYLE = `
     transition: all 0.15s;
   }
   .quick-id:hover { background: rgba(0,212,255,0.1); color: #00d4ff; border-color: rgba(0,212,255,0.3); }
+  .quick-id:active:not(:disabled) { transform: scale(0.96); }
+  .quick-id:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .input-clear-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: rgba(0,212,255,0.35);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 4px;
+    transition: color 0.12s;
+  }
+  .input-clear-btn:hover { color: rgba(0,212,255,0.8); }
+
+  .search-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: #050f1e;
+    border: 1px solid rgba(0,212,255,0.22);
+    border-radius: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0,212,255,0.1) transparent;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  }
+
+  .search-dropdown-item {
+    padding: 9px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0,212,255,0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.08s;
+    user-select: none;
+  }
+  .search-dropdown-item:last-child { border-bottom: none; }
+  .search-dropdown-item:hover,
+  .search-dropdown-item.is-active { background: rgba(0,212,255,0.09); }
+
+  .search-dropdown-hint {
+    padding: 5px 12px 7px;
+    font-size: 7px;
+    letter-spacing: 0.5px;
+    color: rgba(0,212,255,0.2);
+    border-top: 1px solid rgba(0,212,255,0.06);
+  }
 
   /* Error */
   .error-box {
@@ -399,6 +437,42 @@ const STYLE = `
     color: rgba(0,212,255,0.2);
     letter-spacing: 1px;
   }
+
+  /* ─── Responsive layout ─────────────────────────────────────────────── */
+
+  /* Tablet: narrow panel */
+  @media (max-width: 768px) {
+    .panel { width: 260px; min-width: 260px; }
+  }
+
+  /* Mobile: globe on top, panel below */
+  @media (max-width: 600px) {
+    .tracker-root { flex-direction: column; }
+
+    .globe-wrap {
+      height: 50%;
+      flex: none;
+      width: 100%;
+    }
+
+    .panel {
+      width: 100% !important;
+      min-width: unset;
+      height: 50%;
+      border-left: none;
+      border-top: 1px solid rgba(0,212,255,0.12);
+      overflow: hidden;
+    }
+
+    /* Prevent iOS auto-zoom on focus */
+    .norad-input { font-size: 16px !important; }
+
+    /* Error message — ensure it wraps instead of overflowing */
+    .error-box { word-break: break-word; font-size: 9px; }
+
+    /* Quick-sat buttons: tighter wrap */
+    .quick-ids { gap: 4px; }
+  }
 `;
 
 const QUICK_SATS = [
@@ -407,6 +481,8 @@ const QUICK_SATS = [
   { id: "41866", label: "GOES-16" },
   { id: "48274", label: "Tianhe" },
 ];
+
+
 
 function latLonAltToVec3(lat, lon, alt) {
   const earthRadius = 6371;
@@ -551,21 +627,33 @@ function generateMockDebris(satLat, satLon, satAlt) {
   return debris.sort((a, b) => b.riskScore - a.riskScore);
 }
 
-export default function SatelliteTracker({ initialNoradId = "25544" }) {
+export default function SatelliteTracker({
+  initialNoradId   = "25544",
+  savedSats        = [],
+  onSatelliteAdded  = null,
+  onSatelliteRemoved = null,
+}) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const rendererRef = useRef(null);
   const earthRef = useRef(null);
   const atmRef = useRef(null);
+
   const frameRef = useRef(null);
   const trackedSatsRef   = useRef([]);          // [{id, name, satrec, colorHex}]
   const satMeshesRef     = useRef({});           // {noradId: {dot, ring, orbit}}
   const searchTimerRef   = useRef(null);
+  const searchAbortRef   = useRef(null);
+  const searchCacheRef   = useRef(new Map());
+  const conjLoadCountRef = useRef(0);
+  const searchWrapRef = useRef(null);
+  const dropItemRefs  = useRef([]);
 
   const [searchQuery,   setSearchQuery]   = useState(initialNoradId);
   const [searchResults, setSearchResults] = useState([]);
   const [searching,     setSearching]     = useState(false);
-  const [trackedSats,   setTrackedSats]   = useState([]);  // for panel display
+  // TODO: persist tracked satellites via /api/watch (future feature) — currently session-only
+  const [trackedSats,   setTrackedSats]   = useState([]);
   const [error,         setError]         = useState(null);
   const [debris,              setDebris]              = useState([]);
   const [overallRisk,         setOverallRisk]         = useState(null);
@@ -573,8 +661,13 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
   const [guestLimitReached,   setGuestLimitReached]   = useState(false);
   // null = authenticated user (no quota); 0–9 = guest with N analyses remaining today
   const [guestRemaining,      setGuestRemaining]      = useState(null);
+
   // 'simulated' (Phase 1 risk scores) or 'live' (real CDM data, Phase 2)
   const [conjSource,          setConjSource]          = useState('simulated');
+
+  const [trackingId,        setTrackingId]        = useState(null);
+  const [dropdownOpen,      setDropdownOpen]       = useState(false);
+  const [dropdownActiveIdx, setDropdownActiveIdx]  = useState(-1);
 
   // Inject styles
   useEffect(() => {
@@ -584,23 +677,44 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
     return () => { document.head.removeChild(styleEl); };
   }, []);
 
-  // Auto-track the satellite specified by initialNoradId (e.g. arriving from an Alerts card).
-  // Runs once on mount. Three.js initialises synchronously; the async fetch resolves after.
-  // Uses internal API (local DB → CelesTrak fallback) instead of direct CelesTrak access.
+  // Close search dropdown on outside click
+  useEffect(() => {
+    function handler(e) {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target)) {
+        setDropdownOpen(false);
+        setDropdownActiveIdx(-1);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Scroll keyboard-highlighted dropdown item into view
+  useEffect(() => {
+    if (dropdownActiveIdx >= 0 && dropItemRefs.current[dropdownActiveIdx]) {
+      dropItemRefs.current[dropdownActiveIdx].scrollIntoView({ block: 'nearest' });
+    }
+  }, [dropdownActiveIdx]);
+
+  // On mount: restore savedSats (state lifted to parent, survives view switches) then load
+  // initialNoradId if not already in the restored list. Three.js initialises synchronously;
+  // async TLE fetches resolve after. Uses internal API (local DB → CelesTrak fallback).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!initialNoradId) return;
-    const id = initialNoradId;
-    (async () => {
+    const toLoad = new Map(); // noradId -> hint name
+    for (const s of savedSats) toLoad.set(s.id, s.name);
+    if (initialNoradId && !toLoad.has(initialNoradId)) toLoad.set(initialNoradId, null);
+    if (!toLoad.size) return;
+    Promise.all([...toLoad.entries()].map(async ([id, hint]) => {
       try {
         const res  = await client.get(`/satellites/${id}`);
         const data = res.data?.data ?? res.data;
         if (data?.tle_line1 && data?.tle_line2) {
-          addSatellite(data.name ?? id, id, data.tle_line1, data.tle_line2);
+          addSatellite(data.name ?? hint ?? id, id, data.tle_line1, data.tle_line2);
         }
-      } catch { /* API unreachable — leave tracker empty */ }
-    })();
-  }, []); // intentional: fire once on mount with the initial prop value
+      } catch { /* ignore individual failures */ }
+    }));
+  }, []); // intentional: fire once on mount
 
   // Init Three.js
   useEffect(() => {
@@ -653,7 +767,7 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
 
     // Try loading real texture
     new THREE.TextureLoader().load(
-      "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/land_ocean_ice_cloud_2048.jpg",
+      '/earth.jpg',
       (tex) => { earthMat.map = tex; earthMat.needsUpdate = true; },
       undefined,
       () => {}
@@ -693,13 +807,10 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
     }
 
     // Lighting
-    scene.add(new THREE.AmbientLight(0x111133, 1.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.8);
+    scene.add(new THREE.AmbientLight(0xffffff, 2.0));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
     sun.position.set(5, 2, 4);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0x112244, 0.4);
-    fill.position.set(-3, -1, -3);
-    scene.add(fill);
 
     // Mouse drag
     let dragging = false, prevX = 0, prevY = 0;
@@ -772,20 +883,29 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
 
     const onResize = () => {
       if (!el) return;
-      camera.aspect = el.clientWidth / el.clientHeight;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (!w || !h) return;
+      camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(el.clientWidth, el.clientHeight);
+      renderer.setSize(w, h);
     };
+    // ResizeObserver catches flex-layout changes (panel stacking) that window
+    // resize alone misses.
+    const resizeObserver = new ResizeObserver(onResize);
+    resizeObserver.observe(el);
     window.addEventListener("resize", onResize);
 
     return () => {
       cancelAnimationFrame(frameRef.current);
+      resizeObserver.disconnect();
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("resize", onResize);
       el.removeEventListener("mousedown", onDown);
       if (el.contains(renderer.domElement)) el.removeChild(renderer.domElement);
       renderer.dispose();
+      searchAbortRef.current?.abort();
     };
   }, []);
 
@@ -794,31 +914,142 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
 
   // ── Search ─────────────────────────────────────────────────
   // Uses internal catalog API — no direct CelesTrak calls from search.
+  const performSearch = async (q) => {
+    const trimmed = q.trim();
+
+    // Instant cache hit — no network round-trip
+    if (searchCacheRef.current.has(trimmed)) {
+      const cached = searchCacheRef.current.get(trimmed);
+      setSearchResults(cached);
+      setSearching(false);
+      return cached;
+    }
+
+    // Cancel any in-flight request for a previous query
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
+    setSearching(true);
+    try {
+      const res = await client.get('/satellites/search', {
+        params: { q: trimmed },
+        signal: controller.signal,
+      });
+      const results = (res.data?.data ?? res.data ?? []).map(r => ({
+        name:    r.name,
+        noradId: r.norad_id,
+      }));
+      searchCacheRef.current.set(trimmed, results);
+      if (!controller.signal.aborted) {
+        setSearchResults(results);
+      }
+      return results;
+    } catch (err) {
+      // Ignore abort errors (user typed ahead — stale request)
+      if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return [];
+      setSearchResults([]);
+      return [];
+    } finally {
+      if (!controller.signal.aborted) {
+        setSearching(false);
+      }
+    }
+  };
+
   const handleSearchChange = (q) => {
     setSearchQuery(q);
     setSearchResults([]);
     setError(null);
+    setDropdownActiveIdx(-1);
     clearTimeout(searchTimerRef.current);
-    if (q.trim().length < 2) return;
+    if (q.trim().length < 2) {
+      setDropdownOpen(false);
+      return;
+    }
+    setDropdownOpen(true);
 
-    searchTimerRef.current = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const res     = await client.get('/satellites/search', { params: { q: q.trim() } });
-        const results = (res.data?.data ?? res.data ?? []).map(r => ({
-          name:    r.name,
-          noradId: r.norad_id,
-        }));
-        setSearchResults(results);
-      } catch { setSearchResults([]); }
-      finally  { setSearching(false); }
-    }, 400);
+    // Return instantly from session cache — no debounce needed
+    const cached = searchCacheRef.current.get(q.trim());
+    if (cached) {
+      setSearchResults(cached);
+      return;
+    }
+
+    searchTimerRef.current = setTimeout(() => performSearch(q), 300);
+  };
+
+  // Enter key: never a silent no-op.
+  // - Pure numeric → treat as NORAD ID, load directly.
+  // - Results in dropdown → pick first.
+  // - Text but debounce not fired yet → force immediate search, auto-select or show error.
+  const handleSearchKeyDown = async (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setDropdownActiveIdx(i => Math.min(i + 1, searchResults.length - 1));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setDropdownActiveIdx(i => Math.max(i - 1, -1));
+      return;
+    }
+    if (e.key === 'Escape') {
+      setDropdownOpen(false);
+      setSearchResults([]);
+      setDropdownActiveIdx(-1);
+      return;
+    }
+    if (e.key !== 'Enter') return;
+    const q = searchQuery.trim();
+    if (!q) return;
+
+    if (dropdownActiveIdx >= 0 && dropdownActiveIdx < searchResults.length) {
+      const r = searchResults[dropdownActiveIdx];
+      setSearchResults([]);
+      setDropdownOpen(false);
+      setDropdownActiveIdx(-1);
+      setSearchQuery('');
+      loadAndTrack(r.noradId, r.name);
+      return;
+    }
+
+    if (/^\d+$/.test(q)) {
+      clearTimeout(searchTimerRef.current);
+      setSearchResults([]);
+      setDropdownOpen(false);
+      loadAndTrack(q, '');
+      return;
+    }
+
+    if (searchResults.length > 0) {
+      const first = searchResults[0];
+      setSearchResults([]);
+      setDropdownOpen(false);
+      setDropdownActiveIdx(-1);
+      setSearchQuery('');
+      loadAndTrack(first.noradId, first.name);
+      return;
+    }
+
+    clearTimeout(searchTimerRef.current);
+    const results = await performSearch(q);
+    if (results.length > 0) {
+      const first = results[0];
+      setSearchResults([]);
+      setDropdownOpen(false);
+      setSearchQuery('');
+      loadAndTrack(first.noradId, first.name);
+    } else {
+      setError('No satellite found');
+    }
   };
 
   // Fetch TLE from internal API and begin tracking the satellite.
   // Called on search result selection and quick-sat buttons.
   const loadAndTrack = async (noradId, knownName) => {
     setError(null);
+    setTrackingId(noradId);
     try {
       const res  = await client.get(`/satellites/${noradId}`);
       const data = res.data?.data ?? res.data;
@@ -827,8 +1058,15 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
         return;
       }
       addSatellite(data.name ?? knownName ?? noradId, noradId, data.tle_line1, data.tle_line2);
-    } catch {
-      setError(`Could not load satellite ${noradId}`);
+    } catch (err) {
+      if (err.type === 'GUEST_LIMIT_REACHED') {
+        setGuestLimitReached(true);
+      } else {
+        // client.js interceptor normalizes errors to plain {type, code, message} objects
+        setError(err.message ?? `Could not load satellite ${noradId}`);
+      }
+    } finally {
+      setTrackingId(null);
     }
   };
 
@@ -888,83 +1126,100 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
       satMeshesRef.current[noradId] = { sprite, ring, orbit, spriteTex, nearbyMarkers: [] };
       trackedSatsRef.current = [...trackedSatsRef.current, { id: noradId, name, satrec, colorCss }];
       setTrackedSats(prev => [...prev, { id: noradId, name, color: colorCss, lat: lat.toFixed(2), lon: lon.toFixed(2), alt: alt.toFixed(0), speed: spd }]);
+      onSatelliteAdded?.(noradId, name);
 
-      // Fetch conjunction analysis from backend.
+      // Fetch conjunctions for every tracked satellite.
       // HandlePublicRequest applies quota: 10/day for guests, tier limit for API keys, unlimited for users.
-      if (trackedSatsRef.current.length === 1) {
-        setConjunctionsLoading(true);
-        fetchConjunctions(noradId)
-          .then(async ({ objects, remaining, source }) => {
-            // Show risk panel immediately; 3D markers fill in after per-object TLE fetch.
-            setDebris(objects);
-            setConjSource(source);
+      const satNameCapture = name;
+      conjLoadCountRef.current += 1;
+      setConjunctionsLoading(true);
+      fetchConjunctions(noradId)
+        .then(async ({ objects, remaining, source }) => {
+          const tagged = objects.map(obj => ({ ...obj, forNoradId: noradId, forSatName: satNameCapture }));
 
-            if (objects.length > 0) {
-              setOverallRisk(Math.max(...objects.map((d) => d.riskScore)));
+          // Merge: replace this satellite's entries, keep others, deduplicate by conjunction id.
+          setDebris(prev => {
+            const others   = prev.filter(d => d.forNoradId !== noradId);
+            const otherIds = new Set(others.map(d => d.id));
+            return [...others, ...tagged.filter(d => !otherIds.has(d.id))];
+          });
+          setConjSource(source);
 
-              // Fetch real TLE for each secondary NORAD ID in parallel.
-              // fetchSecondaryTle returns null on any failure — approx fallback used below.
-              const tleResults = await Promise.all(
-                objects.map(obj => fetchSecondaryTle(obj.secondaryNoradId))
-              );
+          if (objects.length > 0) {
+            setOverallRisk(prev => {
+              const newMax = Math.max(...objects.map(d => d.riskScore));
+              return prev == null ? newMax : Math.max(prev, newMax);
+            });
 
-              // Update panel items with resolved propagation method label
-              setDebris(objects.map((obj, i) => ({
-                ...obj,
-                propagationMethod: tleResults[i] ? 'sgp4' : 'approx',
-              })));
+            // Skip secondary TLE fetches for guests: each call counts against the 10/day
+            // quota and the 3D positions are cosmetic. Guests see ~APPROX markers instead.
+            const isGuest = remaining !== null;
+            const tleResults = isGuest
+              ? objects.map(() => null)
+              : await Promise.all(objects.map(obj => fetchSecondaryTle(obj.secondaryNoradId)));
 
-              // Build one 3D sphere marker per nearby object
-              const nearbyMarkers = [];
-              const now2  = new Date();
-              const gmst2 = satellite.gstime(now2);
+            // Update panel items with resolved propagation method label
+            setDebris(prev => {
+              const others   = prev.filter(d => d.forNoradId !== noradId);
+              const otherIds = new Set(others.map(d => d.id));
+              const updated  = tagged
+                .map((obj, i) => ({ ...obj, propagationMethod: tleResults[i] ? 'sgp4' : 'approx' }))
+                .filter(d => !otherIds.has(d.id));
+              return [...others, ...updated];
+            });
 
-              objects.forEach((obj, i) => {
-                const satrec   = tleResults[i];
-                const marker   = createNearbyMarker(getRiskColor(obj.riskLevel));
-                let   useSgp4  = false;
+            // Build one 3D sphere marker per nearby object
+            const nearbyMarkers = [];
+            const now2  = new Date();
+            const gmst2 = satellite.gstime(now2);
 
-                if (satrec) {
-                  // Real SGP4 position from TLE
-                  const pv2 = satellite.propagate(satrec, now2);
-                  if (pv2.position) {
-                    const geo2 = satellite.eciToGeodetic(pv2.position, gmst2);
-                    marker.position.copy(latLonAltToVec3(
-                      satellite.degreesLat(geo2.latitude),
-                      satellite.degreesLong(geo2.longitude),
-                      geo2.height,
-                    ));
-                    useSgp4 = true;
-                  }
+            objects.forEach((obj, i) => {
+              const satrec2  = tleResults[i];
+              const marker   = createNearbyMarker(getRiskColor(obj.riskLevel));
+              let   useSgp4  = false;
+
+              if (satrec2) {
+                const pv2 = satellite.propagate(satrec2, now2);
+                if (pv2.position) {
+                  const geo2 = satellite.eciToGeodetic(pv2.position, gmst2);
+                  marker.position.copy(latLonAltToVec3(
+                    satellite.degreesLat(geo2.latitude),
+                    satellite.degreesLong(geo2.longitude),
+                    geo2.height,
+                  ));
+                  useSgp4 = true;
                 }
-
-                if (!useSgp4) {
-                  // Approximate: evenly-spaced ring around primary satellite.
-                  // NOT a real orbital position — clearly approximate (TLE unavailable).
-                  marker.position.copy(approxNearbyPosition(satPos, i, objects.length));
-                }
-
-                earthRef.current?.add(marker);
-                nearbyMarkers.push({
-                  mesh:   marker,
-                  satrec: useSgp4 ? satrec : null,
-                  method: useSgp4 ? 'sgp4' : 'approx',
-                });
-              });
-
-              if (satMeshesRef.current[noradId]) {
-                satMeshesRef.current[noradId].nearbyMarkers = nearbyMarkers;
               }
+
+              if (!useSgp4) {
+                // Approximate: evenly-spaced ring around primary satellite.
+                // NOT a real orbital position — clearly approximate (TLE unavailable).
+                marker.position.copy(approxNearbyPosition(satPos, i, objects.length));
+              }
+
+              earthRef.current?.add(marker);
+              nearbyMarkers.push({
+                mesh:   marker,
+                satrec: useSgp4 ? satrec2 : null,
+                method: useSgp4 ? 'sgp4'  : 'approx',
+              });
+            });
+
+            if (satMeshesRef.current[noradId]) {
+              satMeshesRef.current[noradId].nearbyMarkers = nearbyMarkers;
             }
-            if (remaining !== null) setGuestRemaining(remaining);
-          })
-          .catch((err) => {
-            if (err.type === 'GUEST_LIMIT_REACHED') {
-              setGuestLimitReached(true);
-            }
-          })
-          .finally(() => setConjunctionsLoading(false));
-      }
+          }
+          if (remaining !== null) setGuestRemaining(remaining);
+        })
+        .catch((err) => {
+          if (err.type === 'GUEST_LIMIT_REACHED') {
+            setGuestLimitReached(true);
+          }
+        })
+        .finally(() => {
+          conjLoadCountRef.current -= 1;
+          if (conjLoadCountRef.current === 0) setConjunctionsLoading(false);
+        });
     } catch (err) { setError(err.message); }
   };
 
@@ -996,7 +1251,13 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
     }
     trackedSatsRef.current = trackedSatsRef.current.filter(s => s.id !== noradId);
     setTrackedSats(prev => prev.filter(s => s.id !== noradId));
-    if (trackedSatsRef.current.length === 0) { setDebris([]); setOverallRisk(null); setConjunctionsLoading(false); }
+    setDebris(prev => {
+      const remaining = prev.filter(d => d.forNoradId !== noradId);
+      setOverallRisk(remaining.length > 0 ? Math.max(...remaining.map(d => d.riskScore)) : null);
+      return remaining;
+    });
+    if (trackedSatsRef.current.length === 0) setConjunctionsLoading(false);
+    onSatelliteRemoved?.(noradId);
   };
 
   const risk = overallRisk != null ? riskFromScore(overallRisk) : null;
@@ -1017,7 +1278,7 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
       {/* Panel */}
       <div className="panel">
         <div className="panel-header">
-          <div className="panel-title">DEBRIS.MONITOR</div>
+          <div className="panel-title">SATVIEW.EU</div>
           <div className="panel-subtitle">CONJUNCTION RISK ANALYSIS // v0.1.0</div>
         </div>
 
@@ -1025,37 +1286,76 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
           {/* Search */}
           <div className="section">
             <div className="section-label">Search Satellites</div>
-            <div style={{ position: "relative" }}>
-              <div className="input-row">
+            <div ref={searchWrapRef} style={{ position: "relative" }}>
+              <div style={{ position: "relative" }}>
                 <input
                   className="norad-input"
                   value={searchQuery}
                   onChange={(e) => handleSearchChange(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
                   placeholder="Name or NORAD ID…"
+                  autoComplete="off"
                 />
-                {searching && <div className="spinner" style={{ position: "absolute", right: 12, top: 10 }} />}
+                {searching && (
+                  <div className="spinner" style={{
+                    position: "absolute",
+                    right: searchQuery ? 32 : 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                  }} />
+                )}
+                {searchQuery && !searching && (
+                  <button
+                    className="input-clear-btn"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSearchResults([]);
+                      setDropdownOpen(false);
+                      setDropdownActiveIdx(-1);
+                      setError(null);
+                      clearTimeout(searchTimerRef.current);
+                    }}
+                    tabIndex={-1}
+                    aria-label="Clear"
+                  >×</button>
+                )}
               </div>
-              {searchResults.length > 0 && (
-                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "#020a16", border: "1px solid rgba(0,212,255,0.2)", maxHeight: 220, overflowY: "auto" }}>
-                  {searchResults.map(r => (
-                    <div key={r.noradId}
-                      onClick={() => { setSearchResults([]); setSearchQuery(''); loadAndTrack(r.noradId, r.name); }}
-                      style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid rgba(0,212,255,0.07)", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "rgba(0,212,255,0.07)"}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+              {dropdownOpen && searchResults.length > 0 && (
+                <div className="search-dropdown" role="listbox">
+                  {searchResults.map((r, i) => (
+                    <div
+                      key={r.noradId}
+                      ref={el => { dropItemRefs.current[i] = el; }}
+                      className={`search-dropdown-item${dropdownActiveIdx === i ? ' is-active' : ''}`}
+                      role="option"
+                      aria-selected={dropdownActiveIdx === i}
+                      onClick={() => {
+                        setSearchResults([]);
+                        setDropdownOpen(false);
+                        setDropdownActiveIdx(-1);
+                        setSearchQuery('');
+                        loadAndTrack(r.noradId, r.name);
+                      }}
                     >
                       <span style={{ fontSize: 11, color: "#c8dff0" }}>{r.name}</span>
                       <span style={{ fontSize: 9, color: "rgba(0,212,255,0.4)", letterSpacing: 1 }}>{r.noradId}</span>
                     </div>
                   ))}
+                  <div className="search-dropdown-hint">↑↓ navigate · Enter select · Esc close</div>
                 </div>
               )}
             </div>
             <div className="quick-ids" style={{ marginTop: 8 }}>
               {QUICK_SATS.map((s) => (
-                <div key={s.id} className="quick-id" onClick={() => loadAndTrack(s.id, s.label)}>
-                  {s.label}
-                </div>
+                <button
+                  key={s.id}
+                  className="quick-id"
+                  disabled={trackingId !== null}
+                  onClick={() => loadAndTrack(s.id, s.label)}
+                >
+                  {trackingId === s.id ? '…' : s.label}
+                </button>
               ))}
             </div>
             {error && <div className="error-box" style={{ marginTop: 8 }}>⚠ {error}</div>}
@@ -1151,6 +1451,9 @@ export default function SatelliteTracker({ initialNoradId = "25544" }) {
                       <div style={{ flex: 1 }}>
                         <div className="debris-id" style={{ display: "flex", alignItems: "center", gap: 5 }}>
                           {d.secondaryNoradId ? `NORAD ${d.secondaryNoradId}` : d.id}
+                          {trackedSats.length > 1 && d.forSatName && (
+                            <span style={{ fontSize: 7, color: 'rgba(0,212,255,0.4)', letterSpacing: 0.5 }}>· {d.forSatName}</span>
+                          )}
                           {d.propagationMethod && (
                             <span style={{
                               fontSize: 7, letterSpacing: 0.5, borderRadius: 2, padding: "1px 5px",

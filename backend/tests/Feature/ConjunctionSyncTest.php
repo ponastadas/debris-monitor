@@ -19,17 +19,16 @@ function fakeCdmRecord(array $overrides = []): array
     $counter++;
 
     return array_merge([
-        'CDM_ID'                  => (string) $counter,
-        'CREATED'                 => now()->subHours(6)->format('Y-m-d H:i:s'),
-        'EMERGENCY_REPORTABLE'    => 'N',
-        'TCA'                     => now()->addDays(2)->format('Y-m-d H:i:s'),
-        'MIN_RNG'                 => '1.234',
-        'PC'                      => '1.23456e-05',
-        'SAT1_NAME'               => 'ISS (ZARYA)',
-        'SAT1_OBJECT_DESIGNATOR'  => '25544',
-        'SAT2_NAME'               => 'FENGYUN 1C DEB',
-        'SAT2_OBJECT_DESIGNATOR'  => '29228',
-        'SCREENING_OPTION'        => 'Screening',
+        'CDM_ID'               => (string) $counter,
+        'CREATED'              => now()->subHours(6)->format('Y-m-d H:i:s'),
+        'EMERGENCY_REPORTABLE' => 'N',
+        'TCA'                  => now()->addDays(2)->format('Y-m-d H:i:s'),
+        'MIN_RNG'              => '1.234',
+        'PC'                   => '1.23456e-05',
+        'SAT_1_NAME'           => 'ISS (ZARYA)',
+        'SAT_1_ID'             => '25544',
+        'SAT_2_NAME'           => 'FENGYUN 1C DEB',
+        'SAT_2_ID'             => '29228',
     ], $overrides);
 }
 
@@ -101,8 +100,8 @@ it('ingests multiple CDM events in one run', function () {
     withSpaceTrackCreds();
     fakeSpaceTrack([
         fakeCdmRecord(['CDM_ID' => '99003']),
-        fakeCdmRecord(['CDM_ID' => '99004', 'SAT1_OBJECT_DESIGNATOR' => '20580', 'SAT1_NAME' => 'HST']),
-        fakeCdmRecord(['CDM_ID' => '99005', 'SAT1_OBJECT_DESIGNATOR' => '43013', 'SAT1_NAME' => 'GOES-16']),
+        fakeCdmRecord(['CDM_ID' => '99004', 'SAT_1_ID' => '20580', 'SAT_1_NAME' => 'HST']),
+        fakeCdmRecord(['CDM_ID' => '99005', 'SAT_1_ID' => '43013', 'SAT_1_NAME' => 'GOES-16']),
     ]);
 
     $this->artisan('conjunctions:sync')->assertSuccessful();

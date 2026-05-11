@@ -208,3 +208,51 @@ it('allows an admin account token to access admin endpoints', function () {
          ->getJson('/api/admin/dashboard')
          ->assertOk();
 });
+
+// ── Admin token on public endpoints ───────────────────────────────────────────
+
+it('admin token can access public satellite endpoints without consuming guest quota', function () {
+    $admin = AdminAccount::factory()->create();
+    $token = $admin->createToken('admin-session')->plainTextToken;
+
+    $this->withToken($token)
+         ->getJson('/api/conjunctions/25544')
+         ->assertOk()
+         ->assertJsonPath('success', true);
+
+    expect(GuestUsage::count())->toBe(0);
+});
+
+it('admin token is not subject to guest daily limit even when quota is exhausted', function () {
+    $admin = AdminAccount::factory()->create();
+    $token = $admin->createToken('admin-session')->plainTextToken;
+
+    // Pre-exhaust the guest quota for the fallback IP
+    GuestUsage::create(['identifier' => '127.0.0.1', 'date' => today(), 'count' => 10]);
+
+    $this->withToken($token)
+         ->getJson('/api/conjunctions/25544')
+         ->assertOk();
+});
+
+it('invalid bearer token falls through to guest path', function () {
+    $id = 'guest-invalid-token-fallback';
+
+    $this->withToken('not-a-real-token')
+         ->withHeaders(['X-Guest-ID' => $id])
+         ->getJson('/api/conjunctions/25544')
+         ->assertOk();
+
+    // Guest quota was consumed — invalid token was treated as unauthenticated
+    expect(GuestUsage::todayCount($id))->toBe(1);
+});
+
+it('admin token is rejected by customer-only endpoints', function () {
+    $admin = AdminAccount::factory()->create();
+    $token = $admin->createToken('admin-session')->plainTextToken;
+
+    // /api/auth/me requires a customer (User) Sanctum token — admin token must be rejected
+    $this->withToken($token)
+         ->getJson('/api/auth/me')
+         ->assertUnauthorized();
+});

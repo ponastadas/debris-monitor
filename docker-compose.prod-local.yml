@@ -1,0 +1,119 @@
+# Production-like stack for local testing.
+#
+# Mirrors docker-compose.yml (production) but:
+#   - Builds images from source instead of pulling from the registry
+#   - Replaces Traefik with a single nginx reverse proxy on :8080
+#   - Uses backend/.env for Laravel config (same file as local dev)
+#
+# First-time setup:  make prod-local-setup
+# Start the stack:   make prod-local
+# Stop:              make prod-local-down
+# Wipe DB:           make prod-local-reset
+
+services:
+
+  # Nginx reverse proxy — mirrors what Traefik does in production:
+  #   /api/* → backend container (PHP-FPM + nginx)
+  #   /*     → frontend container (nginx SPA)
+  proxy:
+    image: nginx:1.25-alpine
+    ports:
+      - "8090:80"
+    volumes:
+      - ./docker/nginx-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - prod_local
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      target: production
+    env_file: backend/.env
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: http://localhost:8090
+    volumes:
+      - storage_app:/var/www/html/storage/app
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - prod_local
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    networks:
+      - prod_local
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_DATABASE: debris_local
+      MYSQL_USER: debris
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: rootsecret
+    volumes:
+      - db_data_prod:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - prod_local
+    restart: unless-stopped
+
+  # Runs php artisan schedule:run every 60s — same as production.
+  scheduler:
+    build:
+      context: ./backend
+      target: production
+    env_file: backend/.env
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+    command: >
+      sh -c "while true; do
+        php artisan schedule:run --no-interaction >> /dev/null 2>&1;
+        sleep 60;
+      done"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - prod_local
+    restart: unless-stopped
+
+  # Processes queued jobs (email notifications, alerts).
+  worker:
+    build:
+      context: ./backend
+      target: production
+    env_file: backend/.env
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - prod_local
+    restart: unless-stopped
+
+volumes:
+  db_data_prod:
+  storage_app:
+
+networks:
+  prod_local:

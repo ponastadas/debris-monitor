@@ -11,21 +11,16 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
 /**
- * ConjunctionEventSeeder — realistic demo CDM data for local development.
+ * ConjunctionEventSeeder — OPT-IN ONLY demo CDM events for local dev / screenshots.
  *
- * Populates conjunction_events with plausible Space-Track CDM records so the
- * Tracker "LIVE CDM DATA" path is exercisable without real credentials.
+ * NOT included in DatabaseSeeder. Run explicitly when you need the Tracker CDM
+ * path populated without real Space-Track credentials.
  *
- * Also creates/refreshes conjunction_alerts from those events for watched
- * satellites (same logic as conjunctions:sync).
- *
- * Idempotent: existing events are updated; new alerts only created when the
- * relevant upcoming window is empty.
- *
- * Run locally:
  *   php artisan db:seed --class=ConjunctionEventSeeder
- * Via Docker:
- *   make artisan cmd="db:seed --class=ConjunctionEventSeeder"
+ *   make artisan cmd="db:seed --class=ConjunctionEventSeeder"  (alias: make seed-conjunctions)
+ *
+ * All rows are tagged source='demo' (cdm_id prefix DEMO-) and can be removed with:
+ *   php artisan alerts:purge-demo
  */
 class ConjunctionEventSeeder extends Seeder
 {
@@ -122,7 +117,7 @@ class ConjunctionEventSeeder extends Seeder
                     'sat1_name'            => $def['sat1_name'],
                     'sat2_norad_id'        => $def['sat2_norad_id'],
                     'sat2_name'            => $def['sat2_name'],
-                    'source'               => 'space_track_cdm',
+                    'source'               => 'demo',
                     'fetched_at'           => now(),
                 ],
             );
@@ -131,10 +126,10 @@ class ConjunctionEventSeeder extends Seeder
         $this->command->info('  [CDM]   ' . count(self::DEMO_EVENTS) . ' demo conjunction events upserted.');
 
         // ── 2. Create demo user with CDM-backed alerts ────────────────────
-        // Re-use the same demo@debris.monitor user from AlertDemoSeeder.
+        // Re-use the same demo@satview.eu user from AlertDemoSeeder.
 
         $demo = User::firstOrCreate(
-            ['email' => 'demo@debris.monitor'],
+            ['email' => 'demo@satview.eu'],
             ['name' => 'Demo User', 'password' => Hash::make('password'), 'status' => 'active'],
         );
 
@@ -192,7 +187,7 @@ class ConjunctionEventSeeder extends Seeder
                         'miss_distance_km'     => $event->min_range_km,
                         'probability'          => $event->probability,
                         'risk_score'           => $event->riskScore(),
-                        'source'               => 'space_track_cdm',
+                        'source'               => 'demo',
                         'conjunction_event_id' => $event->id,
                         'notified_at'          => now(),
                     ],
@@ -200,6 +195,6 @@ class ConjunctionEventSeeder extends Seeder
             }
         }
 
-        $this->command->info('  [CDM]   Conjunction alerts generated for demo@debris.monitor (ISS + Hubble).');
+        $this->command->info('  [CDM]   Conjunction alerts generated for demo@satview.eu (ISS + Hubble).');
     }
 }

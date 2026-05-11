@@ -28,7 +28,7 @@ export default function Footer() {
       background: '#010409',
     }}>
       <span style={{ letterSpacing: '0.08em' }}>
-        © {new Date().getFullYear()} Debris Monitor
+        © {new Date().getFullYear()} SatView
       </span>
 
       <nav style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>

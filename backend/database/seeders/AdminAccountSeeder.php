@@ -15,7 +15,7 @@ class AdminAccountSeeder extends Seeder
     public function run(): void
     {
         AdminAccount::firstOrCreate(
-            ['email' => 'admin@debris.monitor'],
+            ['email' => 'admin@satview.eu'],
             [
                 'name'      => 'Admin',
                 'password'  => 'admin',

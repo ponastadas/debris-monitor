@@ -10,21 +10,21 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
 /**
- * AlertDemoSeeder — local demo data for the Alerts feature.
+ * AlertDemoSeeder — OPT-IN ONLY demo data for UI screenshot / local dev demos.
  *
- * Creates three demo users that cover all Alerts UI states:
+ * NOT included in DatabaseSeeder. Run explicitly when you need all Alerts UI
+ * states pre-populated with fake data (e.g. taking screenshots, demoing the UI).
  *
- *   demo@debris.monitor  / password  (starter)  → watched sats + alerts
- *   free@debris.monitor  / password  (free)      → watched sat, no alerts visible
- *   empty@debris.monitor / password  (starter)   → no watched satellites
- *
- * Safe to re-run: existing demo users are reused; alerts are recreated only
- * when no upcoming alerts exist for their primary NORAD IDs (i.e. after expiry).
- *
- * Run locally:
  *   php artisan db:seed --class=AlertDemoSeeder
- * Or via Docker:
  *   make artisan cmd="db:seed --class=AlertDemoSeeder"
+ *
+ * All rows are tagged source='demo' and can be removed with:
+ *   php artisan alerts:purge-demo
+ *
+ * Creates three demo users covering all Alerts UI states:
+ *   demo@satview.eu  / password  (starter)  → watched sats + alerts
+ *   free@satview.eu  / password  (free)      → watched sat, no alerts visible
+ *   empty@satview.eu / password  (starter)   → no watched satellites
  */
 class AlertDemoSeeder extends Seeder
 {
@@ -33,7 +33,7 @@ class AlertDemoSeeder extends Seeder
         // ── 1. Demo user (starter) — watched sats + alerts ────────────────
 
         $demo = User::firstOrCreate(
-            ['email' => 'demo@debris.monitor'],
+            ['email' => 'demo@satview.eu'],
             ['name' => 'Demo User', 'password' => Hash::make('password'), 'status' => 'active'],
         );
 
@@ -74,6 +74,7 @@ class AlertDemoSeeder extends Seeder
                     'miss_distance_km'   => 0.312,
                     'probability'        => 0.00823456,
                     'risk_score'         => 88,
+                    'source'             => 'demo',
                     'notified_at'        => now(),
                     'created_at'         => now(),
                     'updated_at'         => now(),
@@ -88,6 +89,7 @@ class AlertDemoSeeder extends Seeder
                     'miss_distance_km'   => 1.847,
                     'probability'        => 0.00041200,
                     'risk_score'         => 54,
+                    'source'             => 'demo',
                     'notified_at'        => now(),
                     'created_at'         => now(),
                     'updated_at'         => now(),
@@ -102,6 +104,7 @@ class AlertDemoSeeder extends Seeder
                     'miss_distance_km'   => 3.912,
                     'probability'        => 0.00000870,
                     'risk_score'         => 22,
+                    'source'             => 'demo',
                     'notified_at'        => null,
                     'created_at'         => now(),
                     'updated_at'         => now(),
@@ -126,6 +129,7 @@ class AlertDemoSeeder extends Seeder
                     'miss_distance_km'   => 0.781,
                     'probability'        => 0.00312000,
                     'risk_score'         => 76,
+                    'source'             => 'demo',
                     'notified_at'        => now(),
                     'created_at'         => now(),
                     'updated_at'         => now(),
@@ -140,6 +144,7 @@ class AlertDemoSeeder extends Seeder
                     'miss_distance_km'   => 2.341,
                     'probability'        => 0.00018900,
                     'risk_score'         => 45,
+                    'source'             => 'demo',
                     'notified_at'        => null,
                     'created_at'         => now(),
                     'updated_at'         => now(),
@@ -147,12 +152,12 @@ class AlertDemoSeeder extends Seeder
             ]);
         }
 
-        $this->command->info('  [demo]  demo@debris.monitor (starter) — ISS + Hubble watched, 5 alerts');
+        $this->command->info('  [demo]  demo@satview.eu (starter) — ISS + Hubble watched, 5 alerts');
 
         // ── 2. Free user — sees gate, can't view alerts ────────────────────
 
         $free = User::firstOrCreate(
-            ['email' => 'free@debris.monitor'],
+            ['email' => 'free@satview.eu'],
             ['name' => 'Free User', 'password' => Hash::make('password'), 'status' => 'active'],
         );
 
@@ -163,12 +168,12 @@ class AlertDemoSeeder extends Seeder
             ['name' => 'ISS (ZARYA)'],
         );
 
-        $this->command->info('  [demo]  free@debris.monitor (free) — ISS watched, upgrade gate shown');
+        $this->command->info('  [demo]  free@satview.eu (free) — ISS watched, upgrade gate shown');
 
         // ── 3. Starter user with no watched satellites ────────────────────
 
         $empty = User::firstOrCreate(
-            ['email' => 'empty@debris.monitor'],
+            ['email' => 'empty@satview.eu'],
             ['name' => 'Empty User', 'password' => Hash::make('password'), 'status' => 'active'],
         );
 
@@ -182,6 +187,6 @@ class AlertDemoSeeder extends Seeder
             ],
         );
 
-        $this->command->info('  [demo]  empty@debris.monitor (starter) — no watched sats, empty alerts state');
+        $this->command->info('  [demo]  empty@satview.eu (starter) — no watched sats, empty alerts state');
     }
 }

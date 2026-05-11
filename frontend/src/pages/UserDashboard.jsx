@@ -486,7 +486,7 @@ export default function UserDashboard() {
 
       <header style={S.header}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <span style={S.logo}>◈ DEBRIS MONITOR</span>
+          <span style={S.logo}>◈ SATVIEW</span>
           <button style={{ ...S.btn(false), fontSize: 10 }} onClick={() => navigate('/')}>
             ← BACK TO APP
           </button>

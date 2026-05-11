@@ -76,6 +76,8 @@ class AdminDashboardController extends Controller
             $syncedAt = $max ? Carbon::parse($max)->toIso8601String() : null;
         }
 
+        $typeMap = ['satellite' => 'satellite', 'debris' => 'debris', 'rocket_body' => 'rocket'];
+
         $byType = DB::table('satellites as s')
             ->join('tle_records as t', function ($join) {
                 $join->on('t.satellite_id', '=', 's.id')->where('t.is_current', true);
@@ -83,7 +85,7 @@ class AdminDashboardController extends Controller
             ->select('s.object_type', DB::raw('COUNT(*) as count'))
             ->groupBy('s.object_type')
             ->get()
-            ->pluck('count', 'object_type')
+            ->mapWithKeys(fn ($row) => [$typeMap[$row->object_type] ?? 'unknown' => (int) $row->count])
             ->toArray();
 
         return [

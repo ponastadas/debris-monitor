@@ -110,6 +110,10 @@ export default function Login() {
         <button
           type="submit"
           disabled={loading}
+          onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'rgba(0,212,255,0.22)'; }}
+          onMouseLeave={e => { if (!loading) e.currentTarget.style.background = loading ? 'rgba(0,212,255,0.1)' : 'rgba(0,212,255,0.15)'; }}
+          onMouseDown={e => { if (!loading) e.currentTarget.style.background = 'rgba(0,212,255,0.28)'; }}
+          onMouseUp={e => { if (!loading) e.currentTarget.style.background = 'rgba(0,212,255,0.22)'; }}
           style={{
             width: '100%',
             background: loading ? 'rgba(0,212,255,0.1)' : 'rgba(0,212,255,0.15)',

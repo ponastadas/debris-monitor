@@ -1,11 +1,15 @@
-# Debris Monitor — Project Context
-> Last updated: 2026-04-19 (session 27 — search quality pass: SatelliteSearchController rewritten with 4-strategy search (standard LIKE → REGEXP_REPLACE strip-normalised LIKE → international designator LIKE → alias prepend); aliases reduced to hubble/hst→20580 and tiangong/tianhe/css→48274; SatelliteSyncCommand adds GNSS groups (gps-ops, glo-ops, galileo, beidou, sbas, amateur), now extracts+stores international_designator from TLE line1 (e.g. "1998-067A"); phpunit.xml DB env vars now have force="true" so tests no longer wipe MySQL catalog; catalog re-synced (~4,568 sats with designators). Use this to onboard Claude Code in new sessions.
+# SatView — Project Context
+> Last updated: 2026-05-09 (session 34 — fixed Space-Track CDM field names: API returns SAT_1_ID/SAT_2_ID/SAT_1_NAME/SAT_2_NAME, not SAT1_OBJECT_DESIGNATOR/SAT1_NAME as code assumed; all 288 CDM records were being silently skipped; NORAD IDs now zero-padded to 5 digits; CelesTrak group timeout 30→90s; SATCAT CSV timeout 60→120s; 282 backend tests pass).
+
+---
+
+(session 32 — DevOps overhaul: backend Dockerfile now has CMD [supervisord] to run nginx+php-fpm (was missing — containers only started php-fpm); backend/docker/nginx.conf + supervisord.conf added; docker-compose.yml: image vars BACKEND_IMAGE/FRONTEND_IMAGE (SHA-tagged by CD), scheduler + worker services added, Traefik HTTP→HTTPS redirect, service port labels, domain satview.eu; docker-compose.staging.yml: rewritten as complete standalone file with all services; ci.yml: permissions, concurrency, removed unused VITE_API_URL_STAGING secret; cd.yml: triggers via workflow_run (CI must pass first), SHA-tagged deploys (sha-<7chars>), SCP compose file to server, GHCR login on server, DB backup before up, set -euo pipefail, health check loop, 72h image prune; docs/deployment.md created; 266 backend + 44 frontend tests pass).
 
 ---
 
 ## What This Project Is
 
-**Debris Monitor** — a satellite conjunction risk monitoring platform. Dual purpose:
+**SatView** — a satellite conjunction risk monitoring platform. Dual purpose:
 1. **CI/CD demo** for annual professional goal (show lint → test → Docker build → staging/prod deploy)
 2. **Passive income SaaS** (API-first, monetized via Stripe — currently mock mode)
 
@@ -20,7 +24,7 @@ Real product, real pipeline, real data. Not a toy.
 | spaceaware.io (Lyteworx) | Defense / Gov | Gated, no developer API |
 | SpaceAware (Riskaware) | Enterprise | Complex, expensive |
 | KeepTrack.space | Hobbyists | No risk scoring, CC BY-NC, no webhooks |
-| **Debris Monitor** | **Developers + Startups** | **Clean API, webhooks, freemium, commercial OK** |
+| **SatView** | **Developers + Startups** | **Clean API, webhooks, freemium, commercial OK** |
 
 ---
 
@@ -579,11 +583,14 @@ Watch-list UX:
 
 ### HandlePublicRequest (`app/Http/Middleware/HandlePublicRequest.php`)
 Used on `/api/satellites/*` and `/api/conjunctions/*`. Resolves actor in priority order:
-1. Bearer token → `auth('sanctum')->user()` → sets actor_type=user, unlimited access
+1. Bearer token → `auth('sanctum')->user()` (customer) → sets actor_type=user, unlimited access
+   - If sanctum rejects it → `auth('admin')->user()` (admin) → sets actor_type=admin, enterprise entitlements
 2. `X-API-Key` or `?api_key=` → validates key, checks daily_limit, logs to api_usage, adds rate limit headers
 3. No auth → reads `X-Guest-ID` header (or falls back to IP), checks/increments `guest_usage` table, adds `X-Guest-Requests-Remaining` header. Returns 429 `GUEST_LIMIT_REACHED` when limit hit.
 
 Sets request attributes: `actor_type`, `actor`, `entitlements`
+
+**Admin tokens on public endpoints:** sanctum guard is scoped to `users` provider — AdminAccount tokens produce 401 from sanctum; the fallback `auth('admin')` check catches them and grants enterprise-level access via `EntitlementService::forAdmin()`. `client.js` sets `_isAdminToken=true` flag on requests using `dm_admin_token` so the 401 response interceptor skips the redirect-to-login logic.
 
 ### EnsureIsAdmin
 Checks `auth('admin')->user()?->isActive()`. Applied AFTER `auth:admin` (which verifies the token). Blocks `is_active=false` admin accounts with 403. Admin routes use middleware stack: `['auth:admin', 'admin']`.
@@ -615,7 +622,7 @@ register, login (returns bearer token), logout, me (get/update), password change
 - `GET /api/satellites/search?q=` — searches local `satellites` table by NORAD ID or name (LIKE). No live CelesTrak call. Returns `{success, data: [{norad_id, name}]}`. Catalog must be populated via `satellites:sync`.
 
 ### CatalogController
-- `GET /api/catalog` — public, no auth, no rate limit. Returns all satellites with current TLE: `{success, data: {satellites: [{name, type, line1, line2}], count, synced_at}}`. `norad_id` not returned (frontend extracts from line1[2:7]). Cache-Control: max-age=3600, ETag on every response (md5 of max fetched_at). 304 returned when If-None-Match matches. Supports `?types=satellite,debris,rocket` filter (unknown tokens → no rows). Returns empty array when catalog not synced.
+- `GET /api/catalog` — public, no auth, no rate limit. Returns all satellites with current TLE: `{success, data: {satellites: [{norad_id, name, type, line1, line2}], count, synced_at}}`. Cache-Control: max-age=3600, ETag on every response (md5 of max fetched_at). 304 returned when If-None-Match matches. Supports `?types=satellite,debris,rocket,unknown` filter; `unknown` maps to `whereNull('s.object_type')` (not a string value in DB). Returns empty array when catalog not synced.
 
 ### ConjunctionController
 - `index($noradId)` — queries `conjunction_events` for real CDM data first (scope: active() ±24h past to +7d, forObject(noradId)); falls back to simulated when no CDM data. Response `source` field: 'space_track_cdm' | 'simulated'. Frontend badge renders honestly based on source.
@@ -655,21 +662,31 @@ register, login (returns bearer token), logout, me (get/update), password change
 - `db` — MySQL 8 with healthcheck
 - `mailpit` — catches all Laravel emails (UI at :8025)
 
-### docker-compose.staging.yml
-- `:staging` image tags, `APP_DEBUG=true`, isolated DB name
+### docker-compose.staging.yml (standalone — staging server)
+- Complete standalone file (not an override): Traefik + backend + frontend + db + scheduler + worker
+- Images: `${BACKEND_IMAGE:-...:staging}` / `${FRONTEND_IMAGE:-...:staging}` (set to SHA tag by CD)
+- `APP_ENV=staging`, `APP_DEBUG=false`, domain `staging.satview.eu`
+- Isolated DB: `${DB_DATABASE:-satview_staging}`
+- `--project-name satview-staging` avoids container name collisions
 
 ### docker-compose.yml (production)
-- Traefik reverse proxy, Let's Encrypt TLS auto-provisioning
-- `:latest` image tags, `APP_DEBUG=false`
+- Same structure as staging: Traefik + backend + frontend + db + scheduler + worker
+- Images: `${BACKEND_IMAGE:-...:latest}` / `${FRONTEND_IMAGE:-...:latest}` (set to SHA tag by CD)
+- Traefik: HTTP→HTTPS global redirect, Let's Encrypt ACME, `traefik.http.services.*.loadbalancer.server.port=80`
+- `scheduler` service: `while true; do php artisan schedule:run; sleep 60; done` — runs all scheduled commands (satellites:sync, conjunctions:sync, conjunctions:check, db:backup)
+- `worker` service: `php artisan queue:work` — processes queued jobs (ConjunctionAlertNotification)
+- `storage_app` named volume: persists `storage/app/` (file uploads, backups) across deploys
 
 ### Backend Dockerfile (multi-stage)
-- `vendor` stage: Composer install
-- `production` stage: PHP-FPM + Nginx + Supervisor (Alpine)
-- `development` stage: PHP CLI dev server (Composer installed via curl)
+- `vendor` stage: Composer install (isolated — no app source in cache layer)
+- `production` stage: PHP-FPM + Nginx + Supervisor (Alpine); `docker/nginx.conf` → `/etc/nginx/http.d/default.conf`; `docker/supervisord.conf` starts php-fpm (priority 10) then nginx (priority 20); `CMD ["/usr/bin/supervisord"]`; HEALTHCHECK with `--start-period=15s`
+- `development` stage: PHP CLI dev server (`php artisan serve`)
+- `backend/docker/nginx.conf`: root `/var/www/html/public`, PHP-FPM on `127.0.0.1:9000`, gzip, Docker stdout/stderr logging
+- `backend/docker/supervisord.conf`: nodaemon, both programs log to stdout/stderr
 
 ### Frontend Dockerfile (multi-stage)
-- `builder` stage: `npm ci` + `vite build`
-- `production` stage: Nginx serving `/dist`
+- `builder` stage: `npm ci` + `vite build` — no build-time API URL (frontend uses relative `baseURL: '/api'`; Traefik routes `/api/*` to backend at same domain)
+- `production` stage: Nginx serving `/dist`; `frontend/docker/nginx.conf`: SPA fallback (`try_files $uri /index.html`), `/health` endpoint
 - `Dockerfile.dev`: Vite HMR server
 
 ---
@@ -682,25 +699,27 @@ backend-lint (Pint) → backend-test (Pest + MySQL service container)
   - Includes: composer audit (PHP dependency CVE scan, fails build on any vulnerability)
 frontend-lint (ESLint) → frontend-test (Vitest) → frontend-build
   - frontend-test includes: npm audit --audit-level=high (JS dependency CVE scan)
+  - Concurrency group: cancel-in-progress=true (fast feedback on each push)
+  - Global permissions: contents:read only
 ```
 
-### cd.yml (triggers on push to develop or main)
+### cd.yml (triggers via workflow_run: CI must pass first)
 ```
-develop → build :staging images → deploy to staging via SSH
-  - Pre-migration backup: mysqldump → ~/backups/pre-deploy-<timestamp>.sql (via docker compose exec db)
-main    → build :latest images  → deploy to prod via SSH
-  - Pre-migration backup: mysqldump → ~/backups/pre-deploy-<timestamp>.sql (via docker compose exec db)
+develop CI passes → build staging images → deploy to staging.satview.eu
+main    CI passes → build prod images    → approval gate → deploy to satview.eu
 ```
-
-Images pushed to GitHub Container Registry (ghcr.io).
-Prod deploy also runs `php artisan config:cache` + `route:cache`.
+- Images tagged sha-<7chars> (immutable) + staging/latest (convenience)
+- GHCR: ghcr.io/ponastadas/debris-monitor-{backend,frontend}
+- Deploy: SCP compose file → GHCR login → pull SHA images → DB backup → up -d → migrate → config:cache → health check
+- Image prune: --filter until=72h (preserves 3 days of rollback images)
+- Concurrency group: cancel-in-progress=false (queues deploys, never cancels)
 
 ### GitHub Secrets Required
 ```
 STAGING_HOST, STAGING_USER, STAGING_SSH_KEY
 PROD_HOST, PROD_USER, PROD_SSH_KEY
-VITE_API_URL_STAGING
 ```
+(VITE_API_URL_STAGING removed — frontend uses relative /api paths)
 
 ---
 
@@ -708,21 +727,19 @@ VITE_API_URL_STAGING
 
 | Source | Data | Auth | Refresh |
 |---|---|---|---|
-| CelesTrak | TLE data | None | Every 6h via `satellites:sync` |
+| CelesTrak TLE groups | TLE data (gp.php?GROUP=) | None | Every 6h via `satellites:sync` |
+| CelesTrak SATCAT | Per-object type classification (satcat.csv) | None | Every sync run (fetched once per sync) |
 | Space-Track | CDM conjunction messages (CDM_PUBLIC) | Free account (SPACE_TRACK_USER/PASS in .env) | Every 6h via `conjunctions:sync` |
 
 **Key insight:** Don't proxy — cache. Fetch once on a schedule, serve from MySQL.
 
-TLE groups:
-- `GROUP=active` — all active satellites (~6k)
-- `GROUP=cosmos-2251-debris`, `iridium-33-debris`, `fengyun-1c-debris`, `2019-006` — debris fields
-- `GROUP=rocket-bodies` — spent stages
+TLE groups (DEFAULT_GROUPS): `active`, `stations`, `weather`, `noaa`, `goes`, `resource`, `sarsat`, `dmc`, `tdrss`, `argos`, `planet`, `spire`, `oneweb`, `starlink`, `iridium-NEXT`, `geo`, `last-30-days`, `gps-ops`, `glo-ops`, `galileo`, `beidou`, `sbas`, `amateur`, `cubesat`, `fengyun-1c-debris`, `cosmos-2251-debris`, `iridium-33-debris`, `2019-006`, `rocket-bodies`
+
+**Type classification**: SATCAT CSV provides authoritative per-object type (PAY→satellite, R/B→rocket_body, DEB→debris, UNK→null). Group-level OBJECT_TYPE_MAP is the fallback when SATCAT is unavailable or the object is absent from SATCAT. This correctly classifies ~2,400+ active rocket bodies that arrive via `GROUP=active` but are R/B in SATCAT.
 
 ---
 
 ## Known Issues
-
-- **satellite.js WASM build error**: top-level await incompatible with iife format — pre-existing issue, not introduced by recent work. Frontend build via CI may need `vite.config.js` adjustments.
 
 - **GuestAccessTest network flakiness**: `it does not count the 10th request` fails when CelesTrak is unreachable or slow during test run (the guest-boundary test increments usage via a real `/api/conjunctions/25544` call). Pre-existing; not related to any feature work.
 
@@ -734,9 +751,9 @@ TLE groups:
 
 ## What's Built
 
-- [x] CI/CD pipeline (ci.yml + cd.yml)
-- [x] Docker multi-stage builds (backend + frontend)
-- [x] docker-compose local/staging/prod
+- [x] CI/CD pipeline — ci.yml (lint + test + build per service, concurrency cancel-in-progress) + cd.yml (workflow_run trigger so CD only fires after CI passes, SHA-tagged images `sha-<7chars>`, SCP compose file to server, GHCR login, DB backup before migration, health check loop, 72h image prune for rollback; production environment approval gate)
+- [x] Docker multi-stage builds — backend (`vendor → production`: supervisord runs nginx+php-fpm, `backend/docker/nginx.conf` + `supervisord.conf`; `development`: artisan serve) + frontend (node builder → nginx static)
+- [x] Docker Compose — `docker-compose.local.yml` (dev with HMR), `docker-compose.staging.yml` (full standalone: Traefik, backend, frontend, db, scheduler, worker), `docker-compose.yml` production (same + approval gate); all use `BACKEND_IMAGE`/`FRONTEND_IMAGE` env vars for SHA-pinned deploys
 - [x] Makefile dev shortcuts
 - [x] Laravel API: health, satellites, conjunctions, API keys
 - [x] AuthenticateApiKey middleware with rate limiting
@@ -771,7 +788,7 @@ TLE groups:
 - [x] BillingController::subscribe() — validation uses EntitlementService::paidPlanKeys() (no hardcoded strings)
 - [x] SubscriptionFactory + PaymentFactory — for test fixtures
 - [x] HasFactory added to Subscription + Payment models
-- [x] AdminAccountSeeder — idempotent (firstOrCreate) admin in admin_accounts: admin@debris.monitor / admin
+- [x] AdminAccountSeeder — idempotent (firstOrCreate) admin in admin_accounts: admin@satview.eu / admin
 - [x] BillingTest.php — 13 tests: plan resolution, subscribe/cancel, payment history, auth guards
 - [x] EntitlementTest.php — 14 tests: all actor types, add-on merging, catalog shape, capability checks
 - [x] ApiUsage: explicit $table = 'api_usage' (Eloquent would default to api_usages — bug fixed)
@@ -837,8 +854,12 @@ TLE groups:
 - [x] HasFactory added to ConjunctionAlert and WatchedSatellite models
 - [x] WatchedSatelliteFactory — states: iss(), hubble(), forNorad(id, name), withFreshTle()
 - [x] ConjunctionAlertFactory — states: high(), medium(), low(), past(), distant(), notified(), forPrimary(id, name)
-- [x] AlertDemoSeeder — creates 3 demo users covering all Alerts UI states (demo@debris.monitor starter+alerts, free@debris.monitor upgrade gate, empty@debris.monitor no-sats empty state); idempotent (recreates expired alerts only); run with `make artisan cmd="db:seed --class=AlertDemoSeeder"`
-- [x] DatabaseSeeder includes AlertDemoSeeder
+- [x] AlertDemoSeeder — creates 3 demo users covering all Alerts UI states (demo@satview.eu starter+alerts, free@satview.eu upgrade gate, empty@satview.eu no-sats empty state); idempotent (recreates expired alerts only); run with `make artisan cmd="db:seed --class=AlertDemoSeeder"`
+- [x] AlertDemoSeeder — opt-in only (NOT in DatabaseSeeder); tags all rows source='demo'; run: `php artisan db:seed --class=AlertDemoSeeder`
+- [x] ConjunctionEventSeeder — opt-in only (NOT in DatabaseSeeder); tags all rows source='demo'; run: `php artisan db:seed --class=ConjunctionEventSeeder` (alias: `make seed-conjunctions`)
+- [x] `alerts:purge-demo` artisan command — deletes source='demo' alerts, null-source/null-event alerts (old seeder rows), alerts linked to DEMO-* events, and DEMO-* conjunction_events; preserves space_track_cdm and sgp4 rows; supports --dry-run
+- [x] AlertController — always returns meta with source_configured bool (true if SPACE_TRACK_USER+PASS set); meta.source=null when no alerts exist (was 'sgp4' even for empty); single response path (no early return for empty watched list)
+- [x] ConjunctionAlerts.jsx — 'demo' added to SOURCE_LABEL/SOURCE_COLOR; meta bar only shown when meta.source is non-null; "ALL CLEAR" empty state shows orange note when !meta.source_configured
 - [x] AlertController — standardized response envelope ($this->success() for all cases including empty watched sats)
 - [x] AlertTest.php — 19 tests: auth guards (401/403/200), empty states (no sats, sats with no alerts), retrieval (fields, risk_level derivation, TCA sort), scoping (unmonitored sats, past TCA, distant TCA, cross-user isolation, multi-sat), factory state tests
 - [x] ConjunctionAlerts search picker: LOCAL_CATALOG (20 satellites, instant), deferred CelesTrak remote search (350ms debounce, merge), keyboard nav (↑↓/Enter/Esc), clear button, spinner, two-step unwatch confirm, tle_fresh display removed
@@ -857,8 +878,16 @@ TLE groups:
 - [x] DebrisMonitor.jsx — tries GET /api/catalog first; falls back to direct CelesTrak group fetches if catalog empty or unavailable; no behavior change when catalog empty; shows "LOCAL CATALOG" / "CELESTRAK DATA" source label in globe footer
 - [x] AdminDashboardController — catalog stats added (total, synced_at, by_type) to /api/admin/dashboard response
 - [x] AdminDashboard.jsx — CatalogStatus card shows object count, breakdown by type, last sync time, empty-state warning with make sync-catalog hint
-- [x] CatalogController: ETag (md5 of max fetched_at) on every response; 304 on If-None-Match match; ?types= filter (satellite/debris/rocket, unknown tokens → empty); norad_id removed from payload (in line1[2:7])
-- [x] SatelliteCatalogTest.php — 29 tests total (ETag, 304, types filter, unknown type, norad_id absent)
+- [x] CatalogController: ETag (md5 of max fetched_at) on every response; 304 on If-None-Match match; ?types= filter (satellite/debris/rocket/unknown); norad_id included in each satellite entry; ?types=unknown uses whereNull (objects without classification have null object_type, not a string)
+- [x] SatelliteCatalogTest.php — 33 tests total (ETag, 304, types filter, unknown type whereNull, norad_id present, rocket type, all-types, by_type normalization)
+- [x] AdminDashboardController: by_type keys normalized to frontend names (rocket_body→rocket); catalog stats (total, synced_at, by_type) in /api/admin/dashboard
+- [x] HandlePublicRequest: admin bearer token fallback — auth('sanctum') rejected → auth('admin') checked; admin gets enterprise entitlements via EntitlementService::forAdmin(); _isAdminToken flag on client.js suppresses 401 redirect for admin tokens on customer-only endpoints
+- [x] GuestAccessTest.php: 4 new tests for admin token on public endpoints (unlimited, exhausted quota, invalid-token fallthrough, customer-only rejection)
+- [x] satellites:sync SATCAT cross-referencing: fetchSatcatTypes() fetches celestrak.org/pub/satcat.csv; builds NORAD→type map (PAY→satellite, R/B→rocket_body, DEB→debris, UNK→null); each parsed object annotated before persistBatch(); falls back to group-level type when SATCAT unavailable or object absent
+- [x] persistBatch() uses per-object object_type from $p['object_type'] (removed uniform $objectType param)
+- [x] SatelliteSyncTest.php — 5 tests: satellite/rocket/debris classification via SATCAT, SATCAT-fail fallback, per-object missing-from-SATCAT fallback
+- [x] satellites:sync count reporting: DB query for true unique count (replaces inflated per-group sum); 2019-006 and rocket-bodies added to DEFAULT_GROUPS
+- [x] vite.config.js: worker: { format: 'es' } — fixes satellite.js WASM pthreads top-level await incompatible with iife output
 - [x] Real conjunction data pipeline: `conjunction_events` table (CDM ingest) + `SpaceTrackClient` service (session-cookie auth + CDM_PUBLIC fetch)
 - [x] `conjunctions:sync` command — Space-Track CDM_PUBLIC ingest: login → fetch → upsert by cdm_id → generate conjunction_alerts for watched sats → notify users
 - [x] `conjunction_alerts` augmented: `source` (sgp4/space_track_cdm) + `conjunction_event_id` nullable FK; `conjunctions:check` now tags alerts with source='sgp4'
@@ -925,7 +954,7 @@ git push -u origin feat/tle-sync
 ## Starting a New Claude Session
 
 ```
-I'm building "Debris Monitor" — a satellite conjunction risk API + visualization platform.
+I'm building "SatView" — a satellite conjunction risk API + visualization platform.
 Laravel 13 backend, React 19 + Vite frontend, Docker, GitHub Actions CI/CD.
 Developing in WSL2. Repo at /mnt/c/projects/debris-monitor.
 Read CLAUDE_CONTEXT.md in the repo root for full context.

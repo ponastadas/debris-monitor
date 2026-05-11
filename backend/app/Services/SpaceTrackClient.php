@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Cookie\CookieJar;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -21,13 +22,14 @@ use Illuminate\Support\Facades\Log;
  */
 class SpaceTrackClient
 {
-    private const BASE          = 'https://www.space-track.org';
-    private const LOGIN_PATH    = '/ajaxauth/login';
-    private const CDM_PATH      = '/basicspacedata/query/class/cdm_public'
-                                . '/TCA/%3Enow-1'     // TCA > (now − 1 day)
-                                . '/orderby/TCA%20asc'
-                                . '/LIMIT/1000'
-                                . '/format/json';
+    private const BASE       = 'https://www.space-track.org';
+    private const LOGIN_PATH = '/ajaxauth/login';
+    private const CDM_PATH   = '/basicspacedata/query/class/cdm_public'
+                             . '/TCA/%3Enow-1'
+                             . '/orderby/TCA%20asc'
+                             . '/LIMIT/1000'
+                             . '/format/json';
+    private const GP_BASE    = '/basicspacedata/query/class/gp';
 
     private readonly CookieJar $jar;
 
@@ -68,6 +70,168 @@ class SpaceTrackClient
             Log::error('[SpaceTrack] Login exception: ' . $e->getMessage());
             return false;
         }
+    }
+
+    private const GP_PAGE_SIZE = 2000;
+
+    /**
+     * Fetch all currently tracked GP objects of a given OBJECT_TYPE.
+     *
+     * Paginated in 2000-record pages to stay within PHP's 128M memory limit.
+     * DECAY_DATE filter excludes historical/re-entered objects.
+     *
+     * Valid types: PAYLOAD | ROCKET BODY | DEBRIS | UNKNOWN | TBA
+     *
+     * @return list<array{norad_id: string, name: string, object_type: string, international_designator: string|null, line1: string, line2: string}>|null
+     *         null = network/HTTP error
+     */
+    public function fetchGpByType(string $type): ?array
+    {
+        $base = self::GP_BASE
+            . '/OBJECT_TYPE/' . rawurlencode($type)
+            . '/DECAY_DATE/null-val';
+
+        return $this->fetchGpPaginated($base);
+    }
+
+    /**
+     * Fetch GP objects whose TLE epoch is newer than $since (incremental sync).
+     * Covers all object types; excludes decayed objects.
+     *
+     * @return list<array{norad_id: string, name: string, object_type: string, international_designator: string|null, line1: string, line2: string}>|null
+     */
+    public function fetchGpSince(\DateTimeInterface $since): ?array
+    {
+        $base = self::GP_BASE
+            . '/EPOCH/%3E' . $since->format('Y-m-d')   // %3E = >
+            . '/DECAY_DATE/null-val';
+
+        return $this->fetchGpPaginated($base);
+    }
+
+    /**
+     * Paginate through a GP query using NORAD_CAT_ID cursor pagination.
+     *
+     * Space-Track does not support /offset/N — instead we filter NORAD_CAT_ID > lastSeen
+     * on each page. Stops when a page returns fewer records than GP_PAGE_SIZE.
+     *
+     * Uses Guzzle directly (not Laravel's Http facade) to ensure the shared
+     * CookieJar from login() is correctly forwarded to each page request.
+     */
+    private function fetchGpPaginated(string $basePath): ?array
+    {
+        $guzzle  = new GuzzleClient(['cookies' => $this->jar, 'timeout' => 60]);
+        $results = [];
+        $cursor  = 0; // NORAD_CAT_ID > cursor (0 = fetch from the beginning)
+
+        while (true) {
+            $url = self::BASE . $basePath
+                . '/NORAD_CAT_ID/%3E' . $cursor          // %3E = >
+                . '/orderby/NORAD_CAT_ID%20asc'
+                . '/limit/' . self::GP_PAGE_SIZE
+                . '/format/json';
+
+            try {
+                $response = $guzzle->get($url);
+            } catch (\Throwable $e) {
+                Log::error('[SpaceTrack] GP fetch error: ' . $e->getMessage());
+                return null;
+            }
+
+            $statusCode = $response->getStatusCode();
+
+            if ($statusCode < 200 || $statusCode >= 300) {
+                Log::warning('[SpaceTrack] GP fetch HTTP ' . $statusCode . ' — body: ' . substr((string) $response->getBody(), 0, 300));
+                return null;
+            }
+
+            $page = json_decode((string) $response->getBody(), true);
+
+            if (! is_array($page)) {
+                Log::warning('[SpaceTrack] GP response was not a JSON array');
+                return null;
+            }
+
+            foreach ($page as $r) {
+                $record = $this->normalizeGpRecord($r);
+                if ($record !== null) {
+                    $results[] = $record;
+                }
+            }
+
+            if (count($page) < self::GP_PAGE_SIZE) {
+                break; // last page
+            }
+
+            $cursor = (int) end($page)['NORAD_CAT_ID'];
+            usleep(300_000); // 300ms between pages — avoid Space-Track rate limiting
+        }
+
+        return $results;
+    }
+
+
+    /**
+     * @return array{norad_id: string, name: string, object_type: string, international_designator: string|null, line1: string, line2: string}|null
+     */
+    private function normalizeGpRecord(array $r): ?array
+    {
+        $noradId = trim((string) ($r['NORAD_CAT_ID'] ?? ''));
+        $line1   = trim($r['TLE_LINE1'] ?? '');
+        $line2   = trim($r['TLE_LINE2'] ?? '');
+
+        if (! $noradId || ! $line1 || ! $line2) {
+            return null;
+        }
+
+        if (! str_starts_with($line1, '1 ') || ! str_starts_with($line2, '2 ')) {
+            return null;
+        }
+
+        $designator = trim($r['OBJECT_ID'] ?? '');
+
+        return [
+            'norad_id'                => str_pad($noradId, 5, '0', STR_PAD_LEFT),
+            'name'                    => trim($r['OBJECT_NAME'] ?? $noradId),
+            'object_type'             => $r['OBJECT_TYPE'] ?? null,
+            'international_designator' => ($designator && $designator !== 'TBA') ? $designator : null,
+            'line1'                   => $line1,
+            'line2'                   => $line2,
+        ];
+    }
+
+    /**
+     * Fetch a single GP record by NORAD ID.
+     * Used by the staleness sweep to refresh individual satellites.
+     *
+     * @return array{norad_id: string, name: string, object_type: string, international_designator: string|null, line1: string, line2: string}|null
+     */
+    public function fetchGpByNorad(string $noradId): ?array
+    {
+        $id  = ltrim($noradId, '0') ?: '0';
+        $url = self::BASE . self::GP_BASE . '/NORAD_CAT_ID/' . rawurlencode($id) . '/format/json';
+
+        $guzzle = new GuzzleClient(['cookies' => $this->jar, 'timeout' => 15]);
+
+        try {
+            $response = $guzzle->get($url);
+        } catch (\Throwable $e) {
+            Log::error('[SpaceTrack] GP single fetch error: ' . $e->getMessage());
+            return null;
+        }
+
+        $status = $response->getStatusCode();
+        if ($status < 200 || $status >= 300) {
+            return null;
+        }
+
+        $data = json_decode((string) $response->getBody(), true);
+
+        if (! is_array($data) || count($data) === 0) {
+            return null;
+        }
+
+        return $this->normalizeGpRecord($data[0]);
     }
 
     /**

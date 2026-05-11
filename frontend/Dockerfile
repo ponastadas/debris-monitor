@@ -1,7 +1,7 @@
 # Stage 1: Build
+# No VITE_API_URL needed — frontend uses relative baseURL: '/api'
+# and Traefik routes /api/* to the backend container at the same domain.
 FROM node:20-alpine AS builder
-ARG VITE_API_URL=http://localhost
-ENV VITE_API_URL=${VITE_API_URL}
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci

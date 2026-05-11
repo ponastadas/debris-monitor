@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AdminAuthProvider } from './contexts/AdminAuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { CookieConsentProvider } from './contexts/CookieConsentContext';
+import NavBar from './components/NavBar';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import CookieBanner from './components/CookieBanner';
@@ -152,90 +153,50 @@ function AlertsUpgradeGate({ plan }) {
   );
 }
 
-// ── Auth nav button style ─────────────────────────────────────────────────────
-
-const authNavBtn = (primary) => ({
-  padding: '6px 14px',
-  fontSize: 9,
-  letterSpacing: 2,
-  fontFamily: "'JetBrains Mono', monospace",
-  background: primary ? 'rgba(0,212,255,0.12)' : 'rgba(0,212,255,0.03)',
-  border: `1px solid ${primary ? '#00d4ff' : 'rgba(0,212,255,0.2)'}`,
-  borderRadius: 4,
-  color: primary ? '#00d4ff' : 'rgba(0,212,255,0.5)',
-  cursor: 'pointer',
-  textDecoration: 'none',
-  display: 'inline-block',
-  lineHeight: 'normal',
-});
-
 // ── Main Globe App (existing view-switcher) ───────────────────────────────────
 
 function MainApp() {
   const { user, loading, logout } = useAuth();
-  const [view, setView]       = useState('catalog');
+  const [view, setView]       = useState(() => localStorage.getItem('satview_view') || 'catalog');
+
+  useEffect(() => { localStorage.setItem('satview_view', view); }, [view]);
   const [trackId, setTrackId] = useState('25544');
+  const [savedSats, setSavedSats] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('satview_tracked') || '[]'); } catch { return []; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('satview_tracked', JSON.stringify(savedSats));
+  }, [savedSats]);
 
   function handleTrack(noradId) {
     setTrackId(noradId);
     setView('tracker');
   }
 
+  function handleSatelliteAdded(id, name) {
+    setSavedSats(prev => prev.find(s => s.id === id) ? prev : [...prev, { id, name }]);
+  }
+
+  function handleSatelliteRemoved(id) {
+    setSavedSats(prev => prev.filter(s => s.id !== id));
+  }
+
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh' }}>
 
-      {/* Globe canvas fills remaining space */}
-      <div style={{ flex: 1, position: 'relative' }}>
+      <NavBar view={view} onViewChange={setView} user={user} logout={logout} />
 
-        {/* Auth buttons — top left corner */}
-        <div style={{
-          position: 'absolute', top: 16, left: 16, zIndex: 100,
-          display: 'flex', gap: 8, alignItems: 'center',
-        }}>
-          {user ? (
-            <>
-              <a href="/dashboard" style={authNavBtn(true)}>DASHBOARD</a>
-              <button onClick={logout} style={{ ...authNavBtn(false), border: '1px solid rgba(248,81,73,0.25)', color: 'rgba(248,81,73,0.6)' }}>
-                SIGN OUT
-              </button>
-            </>
-          ) : (
-            <>
-              <a href="/register" style={authNavBtn(true)}>REGISTER</a>
-              <a href="/login"    style={authNavBtn(false)}>SIGN IN</a>
-            </>
-          )}
-        </div>
-
-        {/* View toggle — top right, clears the tracker panel */}
-        <div style={{
-          position: 'absolute', top: 16, right: 360, zIndex: 100,
-          display: 'flex', gap: 8, fontFamily: "'JetBrains Mono', monospace",
-        }}>
-          {[
-            { key: 'catalog', label: 'CATALOG' },
-            { key: 'tracker', label: 'TRACKER' },
-            { key: 'alerts',  label: 'ALERTS'  },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setView(key)}
-              style={{
-                padding: '6px 14px', fontSize: 9, letterSpacing: 2,
-                background: view === key ? 'rgba(0,212,255,0.15)' : 'rgba(0,212,255,0.05)',
-                border: `1px solid ${view === key ? '#00d4ff' : 'rgba(0,212,255,0.2)'}`,
-                borderRadius: 4,
-                color: view === key ? '#00d4ff' : 'rgba(0,212,255,0.5)',
-                cursor: 'pointer',
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {view === 'catalog' && <DebrisMonitor onTrack={handleTrack} />}
-        {view === 'tracker' && <SatelliteTracker initialNoradId={trackId} />}
+        {view === 'tracker' && (
+          <SatelliteTracker
+            initialNoradId={trackId}
+            savedSats={savedSats}
+            onSatelliteAdded={handleSatelliteAdded}
+            onSatelliteRemoved={handleSatelliteRemoved}
+          />
+        )}
         {view === 'alerts' && (
           loading
             ? (
