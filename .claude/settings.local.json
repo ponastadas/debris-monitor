@@ -97,7 +97,26 @@
       "Bash(make restore *)",
       "Bash(git -C /mnt/c/projects/debris-monitor status)",
       "Bash(git -C /mnt/c/projects/debris-monitor diff --stat)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(make prod-local-setup *)",
+      "Bash(powershell.exe -Command \"netstat -ano | findstr ':8080'\")",
+      "Bash(powershell.exe -Command \"netstat -ano | findstr ':8090'\")",
+      "Bash(make prod-local *)",
+      "Read(//home/tadasmo/**)",
+      "Read(//mnt/c/Users/**)",
+      "Bash(mkdir -p ~/.ssh)",
+      "Bash(cp /mnt/c/Users/taaas/.ssh/satview_hetzner ~/.ssh/satview_hetzner)",
+      "Bash(cp /mnt/c/Users/taaas/.ssh/satview_hetzner.pub ~/.ssh/satview_hetzner.pub)",
+      "Bash(chmod 700 ~/.ssh)",
+      "Bash(chmod 600 ~/.ssh/satview_hetzner)",
+      "Bash(lsb_release *)",
+      "Bash(terraform init *)",
+      "Bash(terraform plan *)",
+      "Bash(ssh *)",
+      "Bash(terraform apply *)",
+      "Bash(dig +short *)",
+      "Bash(docker push *)",
+      "Bash(docker build *)"
     ]
   }
 }

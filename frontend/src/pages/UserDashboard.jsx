@@ -421,7 +421,7 @@ function ProfileTab({ user }) {
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+    <div className="dash-profile-grid">
       <div style={S.card}>
         <p style={{ fontSize: 11, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 16 }}>
           Profile
@@ -475,31 +475,63 @@ function ProfileTab({ user }) {
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 
+const RESPONSIVE = `
+  .dash-page { overflow-x: hidden; }
+  .dash-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-bottom: 1px solid rgba(48,54,61,0.6);
+    padding: 12px 16px;
+    box-sizing: border-box;
+    width: 100%;
+  }
+  .dash-header-left { display: flex; align-items: center; gap: 12px; }
+  .dash-header-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .dash-user-email {
+    font-size: 12px;
+    color: #8b949e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+  .dash-profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 600px) {
+    .dash-user-email { display: none; }
+    .dash-profile-grid { grid-template-columns: 1fr; }
+    .dash-main { padding: 20px 16px !important; }
+  }
+`;
+
 export default function UserDashboard() {
   const { user, logout }    = useAuth();
   const navigate            = useNavigate();
   const [activeTab, setTab] = useState(0);
 
   return (
-    <div style={S.page}>
+    <div style={S.page} className="dash-page">
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap');`}</style>
+      <style>{RESPONSIVE}</style>
 
-      <header style={S.header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+      <header className="dash-header">
+        <div className="dash-header-left">
           <span style={S.logo}>◈ SATVIEW</span>
           <button style={{ ...S.btn(false), fontSize: 10 }} onClick={() => navigate('/')}>
             ← BACK TO APP
           </button>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 12, color: '#8b949e' }}>{user?.email}</span>
+        <div className="dash-header-right">
+          <span className="dash-user-email">{user?.email}</span>
           <button style={{ ...S.btn(false), fontSize: 10, color: '#f85149', borderColor: 'rgba(248,81,73,0.3)' }} onClick={logout}>
             SIGN OUT
           </button>
         </div>
       </header>
 
-      <main style={S.main}>
+      <main style={S.main} className="dash-main">
         <h1 style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 18, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 24 }}>
           DASHBOARD
         </h1>

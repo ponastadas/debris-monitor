@@ -397,7 +397,7 @@ const STYLE = `
       height: 45%;
       border-left: none;
       border-top: 1px solid rgba(0,212,255,0.12);
-      overflow: hidden;
+      overflow-y: auto;
     }
 
     /* HUD decorations that get in the way on small screens */
@@ -760,6 +760,41 @@ export default function DebrisMonitor({ onTrack }) {
     }
   }, []);
 
+  // Touch drag for mobile — must use addEventListener with passive:false so preventDefault works
+  const globeWrapRef = useRef(null);
+  useEffect(() => {
+    const el = globeWrapRef.current;
+    if (!el) return;
+
+    const onTouchStart = (e) => {
+      const t = e.touches[0];
+      dragRef.current = { active: true, last: { x: t.clientX, y: t.clientY }, velX: 0, velY: 0 };
+    };
+    const onTouchMove = (e) => {
+      const drag = dragRef.current;
+      if (!drag?.active || !sceneRef.current) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      const dx = t.clientX - drag.last.x;
+      const dy = t.clientY - drag.last.y;
+      drag.last = { x: t.clientX, y: t.clientY };
+      drag.velX = dx;
+      drag.velY = dy;
+      sceneRef.current.rotation.y += dx * 0.005;
+      sceneRef.current.rotation.x += dy * 0.005;
+    };
+    const onTouchEnd = () => { if (dragRef.current) dragRef.current.active = false; };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    el.addEventListener('touchend',   onTouchEnd,   { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove',  onTouchMove);
+      el.removeEventListener('touchend',   onTouchEnd);
+    };
+  }, []);
+
   // Search filtering
   const searchResults = search.trim().length > 1
     ? objectsRef.current.filter(o =>
@@ -774,6 +809,7 @@ export default function DebrisMonitor({ onTrack }) {
       <div className="dm-root">
         {/* Globe viewport */}
         <div className="globe-wrap"
+          ref={globeWrapRef}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
