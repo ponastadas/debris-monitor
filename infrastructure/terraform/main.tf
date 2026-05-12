@@ -20,24 +20,24 @@ resource "hcloud_firewall" "satview" {
   name = "satview-firewall"
 
   rule {
-    direction = "in"
-    protocol  = "tcp"
-    port      = "22"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "22"
+    source_ips = ["78.63.0.180/32"]
   }
 
   rule {
-    direction = "in"
-    protocol  = "tcp"
-    port      = "80"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "80"
+    source_ips = ["78.63.0.180/32"]
   }
 
   rule {
-    direction = "in"
-    protocol  = "tcp"
-    port      = "443"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "443"
+    source_ips = ["78.63.0.180/32"]
   }
 }
 
