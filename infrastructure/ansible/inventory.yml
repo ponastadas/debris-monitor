@@ -1,0 +1,4 @@
+all:
+  hosts:
+    satview:
+      ansible_host: 62.238.46.34
