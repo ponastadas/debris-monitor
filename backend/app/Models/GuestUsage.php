@@ -23,29 +23,25 @@ class GuestUsage extends Model
     public static function todayCount(string $identifier): int
     {
         return static::where('identifier', $identifier)
-            ->whereDate('date', today())
+            ->where('date', today()->startOfDay())
             ->value('count') ?? 0;
     }
 
     /**
      * Atomically record one request for the given identifier today.
      *
-     * Two-step approach to avoid the TOCTOU race condition in first()/create():
-     *   1. INSERT IGNORE — creates the row with count=0 if it doesn't exist.
-     *      If two concurrent requests both try this, one silently does nothing.
-     *   2. Atomic UPDATE SET count = count + 1 via Eloquent increment().
-     *      Both concurrent requests safely increment the same row.
+     * Uses a single-statement upsert so concurrent requests safely increment
+     * the same row (ON DUPLICATE KEY UPDATE / ON CONFLICT DO UPDATE).
      *
-     * Named `record()` rather than `increment()` to avoid shadowing the
-     * non-static Eloquent\Model::increment() method (PHP enforces same signature).
+     * Date values use startOfDay() to match the 'Y-m-d H:i:s' string that
+     * Eloquent's `date` cast produces on SQLite (which has no native DATE type).
+     * On MySQL, '2026-05-23 00:00:00' is coerced to DATE '2026-05-23' automatically.
      */
     public static function record(string $identifier): void
     {
-        $today = today()->toDateString();
+        $today = today()->startOfDay()->toDateTimeString();
         $now = now()->toDateTimeString();
 
-        // Atomic upsert: insert with count=1 on first visit, increment on return.
-        // Works on both MySQL (ON DUPLICATE KEY UPDATE) and SQLite (ON CONFLICT DO UPDATE).
         static::upsert(
             [['identifier' => $identifier, 'date' => $today, 'count' => 1, 'created_at' => $now, 'updated_at' => $now]],
             ['identifier', 'date'],
