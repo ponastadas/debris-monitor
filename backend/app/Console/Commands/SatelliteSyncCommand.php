@@ -360,11 +360,36 @@ class SatelliteSyncCommand extends Command
 
         $refreshed = 0;
 
-        foreach ($candidates as $sat) {
-            if ($client !== null) {
-                $result = $client->fetchGpByNorad($sat->norad_id);
-                usleep(300_000); // 300ms between Space-Track calls
-            } else {
+        if ($client !== null) {
+            // Space-Track mode: fetch all stale satellites in bulk (comma-delimited list)
+            // to comply with the policy against individual per-satellite requests.
+            // Chunk into batches of 500 to stay within safe URL-length limits.
+            $noradIds  = $candidates->pluck('norad_id')->all();
+            $satByNorad = $candidates->keyBy('norad_id');
+
+            foreach (array_chunk($noradIds, 500) as $chunk) {
+                $records = $client->fetchGpByNoradList($chunk);
+
+                if ($records === null) {
+                    $this->warn("  Staleness sweep: batch fetch failed — skipping this chunk");
+                    continue;
+                }
+
+                foreach ($records as $record) {
+                    $sat = $satByNorad[$record['norad_id']] ?? null;
+                    if (! $sat) {
+                        continue;
+                    }
+                    $sat->upsertCurrentTle($record['line1'], $record['line2']);
+                    $refreshed++;
+                }
+
+                if (count($noradIds) > 500) {
+                    usleep(300_000); // 300ms between chunks when multiple requests needed
+                }
+            }
+        } else {
+            foreach ($candidates as $sat) {
                 $result = $this->fetchSingleTle($sat->norad_id);
 
                 if ($result === false) {
@@ -373,15 +398,15 @@ class SatelliteSyncCommand extends Command
                 }
 
                 usleep(100_000); // 100ms between CelesTrak calls
-            }
 
-            if ($result === null) {
-                $this->line("  ✗ Could not refresh NORAD {$sat->norad_id} — skipping");
-                continue;
-            }
+                if ($result === null) {
+                    $this->line("  ✗ Could not refresh NORAD {$sat->norad_id} — skipping");
+                    continue;
+                }
 
-            $sat->upsertCurrentTle($result['line1'], $result['line2']);
-            $refreshed++;
+                $sat->upsertCurrentTle($result['line1'], $result['line2']);
+                $refreshed++;
+            }
         }
 
         $this->line("Staleness sweep complete — {$refreshed} TLE(s) refreshed");
