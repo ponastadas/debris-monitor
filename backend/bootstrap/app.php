@@ -1,8 +1,13 @@
 <?php
 
+use App\Http\Middleware\EnsureIsAdmin;
+use App\Http\Middleware\HandlePublicRequest;
+use App\Http\Middleware\SecurityHeaders;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Validation\ValidationException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -13,22 +18,22 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Attach security headers to every response
-        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+        $middleware->append(SecurityHeaders::class);
 
         $middleware->alias([
-            'admin'          => \App\Http\Middleware\EnsureIsAdmin::class,
-            'public.request' => \App\Http\Middleware\HandlePublicRequest::class,
+            'admin' => EnsureIsAdmin::class,
+            'public.request' => HandlePublicRequest::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Normalize validation errors to standard envelope
-        $exceptions->render(function (\Illuminate\Validation\ValidationException $e, $request) {
+        $exceptions->render(function (ValidationException $e, $request) {
             if ($request->expectsJson()) {
                 return response()->json([
                     'success' => false,
-                    'data'    => null,
-                    'error'   => [
-                        'code'    => 'VALIDATION_ERROR',
+                    'data' => null,
+                    'error' => [
+                        'code' => 'VALIDATION_ERROR',
                         'message' => 'The given data was invalid.',
                         'details' => $e->errors(),
                     ],
@@ -37,13 +42,13 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         // Normalize unauthenticated errors
-        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, $request) {
+        $exceptions->render(function (AuthenticationException $e, $request) {
             if ($request->expectsJson()) {
                 return response()->json([
                     'success' => false,
-                    'data'    => null,
-                    'error'   => [
-                        'code'    => 'UNAUTHENTICATED',
+                    'data' => null,
+                    'error' => [
+                        'code' => 'UNAUTHENTICATED',
                         'message' => 'Unauthenticated.',
                         'details' => [],
                     ],
@@ -52,16 +57,16 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         // Normalize all other JSON exceptions
-        $exceptions->render(function (\Throwable $e, $request) {
+        $exceptions->render(function (Throwable $e, $request) {
             if ($request->expectsJson()) {
-                $status  = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
+                $status = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
                 $message = app()->isProduction() ? 'An unexpected error occurred.' : $e->getMessage();
 
                 return response()->json([
                     'success' => false,
-                    'data'    => null,
-                    'error'   => [
-                        'code'    => 'SERVER_ERROR',
+                    'data' => null,
+                    'error' => [
+                        'code' => 'SERVER_ERROR',
                         'message' => $message,
                         'details' => [],
                     ],

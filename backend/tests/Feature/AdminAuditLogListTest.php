@@ -2,6 +2,7 @@
 
 use App\Models\AdminAccount;
 use App\Models\AdminAuditLog;
+use App\Models\User;
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 
@@ -10,7 +11,7 @@ it('rejects unauthenticated requests', function () {
 });
 
 it('rejects customer tokens', function () {
-    $user  = \App\Models\User::factory()->create();
+    $user = User::factory()->create();
     $token = $user->createToken('spa')->plainTextToken;
 
     $this->withToken($token)->getJson('/api/admin/audit-log')->assertUnauthorized();
@@ -39,8 +40,8 @@ it('includes admin email and name on each entry', function () {
     AdminAuditLog::record($admin->id, AdminAuditLog::LOGIN_SUCCESS);
 
     $r = $this->withToken($token)
-         ->getJson('/api/admin/audit-log?action=' . AdminAuditLog::LOGIN_SUCCESS)
-         ->assertOk();
+        ->getJson('/api/admin/audit-log?action='.AdminAuditLog::LOGIN_SUCCESS)
+        ->assertOk();
 
     $entry = $r->json('data.data.0');
     expect($entry['admin_email'])->toBe('inspector@test.local')
@@ -55,8 +56,8 @@ it('returns null actor fields for unknown-email login failures', function () {
     AdminAuditLog::record(null, AdminAuditLog::LOGIN_FAILED, metadata: ['email' => 'ghost@test.local']);
 
     $r = $this->withToken($token)
-         ->getJson('/api/admin/audit-log?action=' . AdminAuditLog::LOGIN_FAILED)
-         ->assertOk();
+        ->getJson('/api/admin/audit-log?action='.AdminAuditLog::LOGIN_FAILED)
+        ->assertOk();
 
     $entry = $r->json('data.data.0');
     expect($entry['admin_id'])->toBeNull()
@@ -75,8 +76,8 @@ it('filters by action', function () {
     AdminAuditLog::record($admin->id, AdminAuditLog::LOGIN_SUCCESS);
 
     $r = $this->withToken($token)
-         ->getJson('/api/admin/audit-log?action=' . AdminAuditLog::LOGIN_SUCCESS)
-         ->assertOk();
+        ->getJson('/api/admin/audit-log?action='.AdminAuditLog::LOGIN_SUCCESS)
+        ->assertOk();
 
     expect($r->json('data.total'))->toBe(2);
     collect($r->json('data.data'))->each(fn ($e) => expect($e['action'])->toBe(AdminAuditLog::LOGIN_SUCCESS));
@@ -85,15 +86,15 @@ it('filters by action', function () {
 it('filters by admin_id', function () {
     $adminA = AdminAccount::factory()->create();
     $adminB = AdminAccount::factory()->create();
-    $token  = $adminA->createToken('admin-session')->plainTextToken;
+    $token = $adminA->createToken('admin-session')->plainTextToken;
 
     AdminAuditLog::record($adminA->id, AdminAuditLog::LOGIN_SUCCESS);
     AdminAuditLog::record($adminA->id, AdminAuditLog::LOGOUT);
     AdminAuditLog::record($adminB->id, AdminAuditLog::LOGIN_SUCCESS);
 
     $r = $this->withToken($token)
-         ->getJson("/api/admin/audit-log?admin_id={$adminA->id}")
-         ->assertOk();
+        ->getJson("/api/admin/audit-log?admin_id={$adminA->id}")
+        ->assertOk();
 
     expect($r->json('data.total'))->toBe(2);
     collect($r->json('data.data'))->each(fn ($e) => expect($e['admin_id'])->toBe($adminA->id));
@@ -106,19 +107,19 @@ it('filters by date range', function () {
     // Old entry
     AdminAuditLog::create([
         'admin_account_id' => $admin->id,
-        'action'           => AdminAuditLog::LOGOUT,
-        'created_at'       => now()->subDays(10),
+        'action' => AdminAuditLog::LOGOUT,
+        'created_at' => now()->subDays(10),
     ]);
 
     // Recent entry
     AdminAuditLog::record($admin->id, AdminAuditLog::LOGIN_SUCCESS);
 
     $from = now()->subDays(1)->toDateString();
-    $to   = now()->toDateString();
+    $to = now()->toDateString();
 
     $r = $this->withToken($token)
-         ->getJson("/api/admin/audit-log?from={$from}&to={$to}")
-         ->assertOk();
+        ->getJson("/api/admin/audit-log?from={$from}&to={$to}")
+        ->assertOk();
 
     expect($r->json('data.total'))->toBe(1)
         ->and($r->json('data.data.0.action'))->toBe(AdminAuditLog::LOGIN_SUCCESS);
@@ -134,16 +135,16 @@ it('returns results newest-first', function () {
     // even when both records are inserted within the same second.
     AdminAuditLog::create([
         'admin_account_id' => $admin->id,
-        'action'           => AdminAuditLog::LOGIN_SUCCESS,
-        'created_at'       => now()->subSeconds(2),
+        'action' => AdminAuditLog::LOGIN_SUCCESS,
+        'created_at' => now()->subSeconds(2),
     ]);
     AdminAuditLog::create([
         'admin_account_id' => $admin->id,
-        'action'           => AdminAuditLog::LOGOUT,
-        'created_at'       => now(),
+        'action' => AdminAuditLog::LOGOUT,
+        'created_at' => now(),
     ]);
 
-    $r     = $this->withToken($token)->getJson('/api/admin/audit-log')->assertOk();
+    $r = $this->withToken($token)->getJson('/api/admin/audit-log')->assertOk();
     $items = $r->json('data.data');
 
     expect($items[0]['action'])->toBe(AdminAuditLog::LOGOUT)

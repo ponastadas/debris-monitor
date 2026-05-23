@@ -10,7 +10,7 @@ it('returns 404 for unknown norad id', function () {
     ]);
 
     $this->getJson('/api/satellites/9999999')
-         ->assertNotFound();
+        ->assertNotFound();
 });
 
 it('returns satellite data for valid norad id from local DB', function () {
@@ -18,8 +18,8 @@ it('returns satellite data for valid norad id from local DB', function () {
     TleRecord::factory()->fresh()->for($sat)->create();
 
     $this->getJson('/api/satellites/25544')
-         ->assertOk()
-         ->assertJsonStructure(['success', 'data' => ['norad_id', 'name', 'tle_line1', 'tle_line2']]);
+        ->assertOk()
+        ->assertJsonStructure(['success', 'data' => ['norad_id', 'name', 'tle_line1', 'tle_line2']]);
 });
 
 it('returns satellite data via celestrak fallback when not in DB', function () {
@@ -31,6 +31,6 @@ it('returns satellite data via celestrak fallback when not in DB', function () {
     ]);
 
     $this->getJson('/api/satellites/25544')
-         ->assertOk()
-         ->assertJsonStructure(['success', 'data' => ['norad_id', 'name', 'tle_line1', 'tle_line2']]);
+        ->assertOk()
+        ->assertJsonStructure(['success', 'data' => ['norad_id', 'name', 'tle_line1', 'tle_line2']]);
 });

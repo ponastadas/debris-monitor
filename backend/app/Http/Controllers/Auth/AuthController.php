@@ -22,8 +22,8 @@ class AuthController extends Controller
     public function register(RegisterRequest $request): JsonResponse
     {
         $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
+            'name' => $request->name,
+            'email' => $request->email,
             'password' => $request->password,
         ]);
 
@@ -32,7 +32,7 @@ class AuthController extends Controller
         $token = $user->createToken('spa')->plainTextToken;
 
         return $this->success([
-            'user'  => $this->userResource($user),
+            'user' => $this->userResource($user),
             'token' => $token,
         ], 201);
     }
@@ -40,7 +40,7 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $credentials = [
-            'email'    => $request->input('email'),
+            'email' => $request->input('email'),
             'password' => $request->input('password'),
         ];
 
@@ -55,6 +55,7 @@ class AuthController extends Controller
 
         if ($user->isSuspended()) {
             Auth::logout();
+
             return $this->error('USER_SUSPENDED', 'Your account has been suspended. Please contact support.', 403);
         }
 
@@ -64,7 +65,7 @@ class AuthController extends Controller
         $token = $user->createToken('spa')->plainTextToken;
 
         return $this->success([
-            'user'  => $this->userResource($user),
+            'user' => $this->userResource($user),
             'token' => $token,
         ]);
     }
@@ -113,7 +114,7 @@ class AuthController extends Controller
     public function updateProfile(Request $request): JsonResponse
     {
         $request->validate([
-            'name'  => ['sometimes', 'string', 'max:100'],
+            'name' => ['sometimes', 'string', 'max:100'],
             'email' => ['sometimes', 'string', 'email:rfc', 'max:255', 'unique:users,email,'.$request->user()->id],
         ]);
 
@@ -125,8 +126,8 @@ class AuthController extends Controller
     public function updatePassword(Request $request): JsonResponse
     {
         $request->validate([
-            'current_password'      => ['required', 'string', 'current_password'],
-            'password'              => ['required', 'confirmed', PasswordRule::min(8)->letters()->numbers()],
+            'current_password' => ['required', 'string', 'current_password'],
+            'password' => ['required', 'confirmed', PasswordRule::min(8)->letters()->numbers()],
         ]);
 
         $request->user()->update(['password' => $request->password]);
@@ -142,13 +143,13 @@ class AuthController extends Controller
         $entitlements = EntitlementService::forUser($user);
 
         return [
-            'id'                => $user->id,
-            'name'              => $user->name,
-            'email'             => $user->email,
-            'status'            => $user->status ?? 'active',
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'status' => $user->status ?? 'active',
             'subscription_plan' => $user->currentPlan(),
-            'can_view_alerts'   => EntitlementService::can($entitlements, 'can_view_alerts'),
-            'created_at'        => $user->created_at?->toIso8601String(),
+            'can_view_alerts' => EntitlementService::can($entitlements, 'can_view_alerts'),
+            'created_at' => $user->created_at?->toIso8601String(),
         ];
     }
 }

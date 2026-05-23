@@ -18,8 +18,8 @@ return new class extends Migration
             $table->dropForeign(['admin_account_id']);
             $table->unsignedBigInteger('admin_account_id')->nullable()->change();
             $table->foreign('admin_account_id')
-                  ->references('id')->on('admin_accounts')
-                  ->cascadeOnDelete();
+                ->references('id')->on('admin_accounts')
+                ->cascadeOnDelete();
         });
     }
 
@@ -29,8 +29,8 @@ return new class extends Migration
             $table->dropForeign(['admin_account_id']);
             $table->unsignedBigInteger('admin_account_id')->nullable(false)->change();
             $table->foreign('admin_account_id')
-                  ->references('id')->on('admin_accounts')
-                  ->cascadeOnDelete();
+                ->references('id')->on('admin_accounts')
+                ->cascadeOnDelete();
         });
     }
 };

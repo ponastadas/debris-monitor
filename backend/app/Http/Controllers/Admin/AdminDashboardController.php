@@ -17,22 +17,22 @@ class AdminDashboardController extends Controller
         $today = today();
 
         return $this->success([
-            'active_users'          => User::where('status', 'active')->count(),
-            'suspended_users'       => User::where('status', 'suspended')->count(),
-            'new_signups_today'     => User::whereDate('created_at', $today)->count(),
+            'active_users' => User::where('status', 'active')->count(),
+            'suspended_users' => User::where('status', 'suspended')->count(),
+            'new_signups_today' => User::whereDate('created_at', $today)->count(),
             'total_api_calls_today' => ApiUsage::whereDate('created_at', $today)->count(),
-            'mrr_cents'             => $this->calculateMrr(),
-            'signups_last_30_days'  => $this->signupsLast30Days(),
-            'plan_distribution'     => $this->planDistribution(),
-            'catalog'               => $this->catalogStats(),
+            'mrr_cents' => $this->calculateMrr(),
+            'signups_last_30_days' => $this->signupsLast30Days(),
+            'plan_distribution' => $this->planDistribution(),
+            'catalog' => $this->catalogStats(),
         ]);
     }
 
     private function calculateMrr(): int
     {
         $planPrices = [
-            'starter'    => 2900,
-            'pro'        => 9900,
+            'starter' => 2900,
+            'pro' => 9900,
             'enterprise' => 49900,
         ];
 
@@ -72,7 +72,7 @@ class AdminDashboardController extends Controller
 
         $syncedAt = null;
         if ($total > 0) {
-            $max      = DB::table('tle_records')->where('is_current', true)->max('fetched_at');
+            $max = DB::table('tle_records')->where('is_current', true)->max('fetched_at');
             $syncedAt = $max ? Carbon::parse($max)->toIso8601String() : null;
         }
 
@@ -89,9 +89,9 @@ class AdminDashboardController extends Controller
             ->toArray();
 
         return [
-            'total'     => $total,
+            'total' => $total,
             'synced_at' => $syncedAt,
-            'by_type'   => $byType,
+            'by_type' => $byType,
         ];
     }
 }

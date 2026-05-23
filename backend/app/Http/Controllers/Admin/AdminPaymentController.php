@@ -18,18 +18,18 @@ class AdminPaymentController extends Controller
             ->orderByDesc('created_at')
             ->paginate(25)
             ->through(fn (Payment $p) => [
-                'id'               => $p->id,
-                'user_id'          => $p->user_id,
-                'user_name'        => $p->user?->name,
-                'user_email'       => $p->user?->email,
-                'amount'           => $p->amount,
+                'id' => $p->id,
+                'user_id' => $p->user_id,
+                'user_name' => $p->user?->name,
+                'user_email' => $p->user?->email,
+                'amount' => $p->amount,
                 'amount_formatted' => $p->formattedAmount(),
-                'currency'         => $p->currency,
-                'status'           => $p->status,
-                'description'      => $p->description,
+                'currency' => $p->currency,
+                'status' => $p->status,
+                'description' => $p->description,
                 'stripe_charge_id' => $p->stripe_charge_id,
-                'refunded_at'      => $p->refunded_at?->toIso8601String(),
-                'created_at'       => $p->created_at->toIso8601String(),
+                'refunded_at' => $p->refunded_at?->toIso8601String(),
+                'created_at' => $p->created_at->toIso8601String(),
             ]);
 
         return $this->success($payments);
@@ -48,7 +48,7 @@ class AdminPaymentController extends Controller
         // In mock mode: mark as refunded in DB.
         // When Stripe is wired in: call \Stripe\Refund::create(['charge' => $payment->stripe_charge_id, 'amount' => $request->amount])
         $payment->update([
-            'status'      => 'refunded',
+            'status' => 'refunded',
             'refunded_at' => now(),
         ]);
 
@@ -60,15 +60,15 @@ class AdminPaymentController extends Controller
             'Payment',
             $payment->id,
             [
-                'user_id'  => $payment->user_id,
-                'amount'   => $request->amount ?? $payment->amount,
+                'user_id' => $payment->user_id,
+                'amount' => $request->amount ?? $payment->amount,
                 'currency' => $payment->currency,
             ],
         );
 
         return $this->success([
-            'id'          => $payment->id,
-            'status'      => 'refunded',
+            'id' => $payment->id,
+            'status' => 'refunded',
             'refunded_at' => $payment->refunded_at->toIso8601String(),
         ]);
     }

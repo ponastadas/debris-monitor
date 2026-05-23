@@ -16,11 +16,11 @@ class UpdatePageRequest extends FormRequest
         $pageId = $this->route('page')?->id;
 
         return [
-            'title'            => ['sometimes', 'string', 'max:200'],
-            'slug'             => ['sometimes', 'nullable', 'string', 'max:200', 'regex:/^[a-z0-9-]+$/', "unique:pages,slug,{$pageId}"],
-            'excerpt'          => ['nullable', 'string', 'max:500'],
-            'content'          => ['sometimes', 'string'],
-            'meta_title'       => ['nullable', 'string', 'max:200'],
+            'title' => ['sometimes', 'string', 'max:200'],
+            'slug' => ['sometimes', 'nullable', 'string', 'max:200', 'regex:/^[a-z0-9-]+$/', "unique:pages,slug,{$pageId}"],
+            'excerpt' => ['nullable', 'string', 'max:500'],
+            'content' => ['sometimes', 'string'],
+            'meta_title' => ['nullable', 'string', 'max:200'],
             'meta_description' => ['nullable', 'string', 'max:320'],
         ];
     }

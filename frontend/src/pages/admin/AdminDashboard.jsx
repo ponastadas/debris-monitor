@@ -133,6 +133,7 @@ export default function AdminDashboard() {
       .then((r) => setStats(r.data.data))
       .catch(() => toast.error('Failed to load dashboard stats'))
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const mrr = stats ? `$${(stats.mrr_cents / 100).toLocaleString('en-US', { minimumFractionDigits: 0 })}` : null;

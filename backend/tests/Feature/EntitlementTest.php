@@ -87,12 +87,12 @@ it('user addons override base plan capabilities', function () {
 
 it('api key entitlements use key-level limits, not plan defaults', function () {
     $user = User::factory()->create();
-    $key  = ApiKey::factory()->create([
-        'user_id'          => $user->id,
-        'tier'             => 'free',
-        'daily_limit'      => 250,
+    $key = ApiKey::factory()->create([
+        'user_id' => $user->id,
+        'tier' => 'free',
+        'daily_limit' => 250,
         'webhooks_enabled' => false,
-        'satellite_limit'  => 10,
+        'satellite_limit' => 10,
     ]);
 
     $e = EntitlementService::forApiKey($key);
@@ -104,9 +104,9 @@ it('api key entitlements use key-level limits, not plan defaults', function () {
 
 it('api key with null daily_limit has unlimited requests', function () {
     $user = User::factory()->create();
-    $key  = ApiKey::factory()->create([
-        'user_id'     => $user->id,
-        'tier'        => 'enterprise',
+    $key = ApiKey::factory()->create([
+        'user_id' => $user->id,
+        'tier' => 'enterprise',
         'daily_limit' => null,
     ]);
 

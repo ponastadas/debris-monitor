@@ -47,12 +47,13 @@ class ConjunctionEvent extends Model
 
         if ($this->probability !== null && $this->probability > 0) {
             $fromPc = match (true) {
-                $this->probability >= 0.001    => 90,
-                $this->probability >= 0.0001   => 75,
-                $this->probability >= 0.00001  => 55,
+                $this->probability >= 0.001 => 90,
+                $this->probability >= 0.0001 => 75,
+                $this->probability >= 0.00001 => 55,
                 $this->probability >= 0.000001 => 35,
-                default                        => 15,
+                default => 15,
             };
+
             return max($fromDist, $fromPc);
         }
 
@@ -64,18 +65,18 @@ class ConjunctionEvent extends Model
         return match (true) {
             $this->riskScore() >= 70 => 'HIGH',
             $this->riskScore() >= 40 => 'MEDIUM',
-            default                  => 'LOW',
+            default => 'LOW',
         };
     }
 
     protected function casts(): array
     {
         return [
-            'tca'                  => 'datetime',
-            'created_at_cdm'       => 'datetime',
-            'fetched_at'           => 'datetime',
-            'probability'          => 'double',
-            'min_range_km'         => 'float',
+            'tca' => 'datetime',
+            'created_at_cdm' => 'datetime',
+            'fetched_at' => 'datetime',
+            'probability' => 'double',
+            'min_range_km' => 'float',
             'emergency_reportable' => 'boolean',
         ];
     }

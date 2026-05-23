@@ -22,7 +22,7 @@ class TleRecord extends Model
     protected function casts(): array
     {
         return [
-            'epoch_at'   => 'datetime',
+            'epoch_at' => 'datetime',
             'fetched_at' => 'datetime',
             'is_current' => 'boolean',
         ];

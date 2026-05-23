@@ -4,7 +4,6 @@ use App\Models\AdminAccount;
 use App\Models\AdminAuditLog;
 use App\Services\AdminMfaService;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Hash;
 use PragmaRX\Google2FA\Google2FA;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -13,7 +12,7 @@ use PragmaRX\Google2FA\Google2FA;
 function adminWithoutMfa(): AdminAccount
 {
     return AdminAccount::factory()->create([
-        'email'    => fake()->unique()->safeEmail(),
+        'email' => fake()->unique()->safeEmail(),
         'password' => bcrypt('Password1!'),
         'is_active' => true,
     ]);
@@ -22,17 +21,17 @@ function adminWithoutMfa(): AdminAccount
 /** Create an active admin with a real TOTP secret configured. */
 function adminWithMfa(): array
 {
-    $totp   = new Google2FA();
+    $totp = new Google2FA;
     $secret = $totp->generateSecretKey(32);
 
-    $mfa   = new AdminMfaService();
+    $mfa = new AdminMfaService;
     $codes = $mfa->generateRecoveryCodes();
 
     $admin = AdminAccount::factory()->create([
-        'email'              => fake()->unique()->safeEmail(),
-        'password'           => bcrypt('Password1!'),
-        'is_active'          => true,
-        'mfa_secret'         => $secret,
+        'email' => fake()->unique()->safeEmail(),
+        'password' => bcrypt('Password1!'),
+        'is_active' => true,
+        'mfa_secret' => $secret,
         'mfa_recovery_codes' => $mfa->hashRecoveryCodes($codes),
     ]);
 
@@ -42,7 +41,7 @@ function adminWithMfa(): array
 /** Generate the current TOTP code for a given secret. */
 function totpCode(string $secret): string
 {
-    return (new Google2FA())->getCurrentOtp($secret);
+    return (new Google2FA)->getCurrentOtp($secret);
 }
 
 // ── Login: MFA not configured → forced setup ─────────────────────────────────
@@ -52,7 +51,7 @@ it('returns mfa_setup_required instead of a token when MFA is not configured', f
     $admin = adminWithoutMfa();
 
     $res = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'Password1!',
     ]);
 
@@ -69,7 +68,7 @@ it('returns mfa_required and mfa_token when MFA is configured', function () {
     [$admin] = adminWithMfa();
 
     $res = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'Password1!',
     ]);
 
@@ -85,12 +84,12 @@ it('stores the admin id in cache under the mfa challenge key', function () {
     [$admin] = adminWithMfa();
 
     $res = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'Password1!',
     ]);
 
     $mfaToken = $res->json('data.mfa_token');
-    $cached   = Cache::get(AdminMfaService::challengeKey($mfaToken));
+    $cached = Cache::get(AdminMfaService::challengeKey($mfaToken));
 
     expect($cached)->toBe($admin->id);
 });
@@ -102,13 +101,13 @@ it('issues a token when a valid TOTP code is submitted', function () {
 
     // Get challenge token
     $mfaToken = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'Password1!',
     ])->json('data.mfa_token');
 
     $res = $this->postJson('/api/admin/auth/mfa/verify', [
         'mfa_token' => $mfaToken,
-        'code'      => totpCode($secret),
+        'code' => totpCode($secret),
     ]);
 
     $res->assertOk()
@@ -121,13 +120,13 @@ it('records mfa.challenge_passed on successful TOTP verification', function () {
     [$admin, $secret] = adminWithMfa();
 
     $mfaToken = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'Password1!',
     ])->json('data.mfa_token');
 
     $this->postJson('/api/admin/auth/mfa/verify', [
         'mfa_token' => $mfaToken,
-        'code'      => totpCode($secret),
+        'code' => totpCode($secret),
     ])->assertOk();
 
     $log = AdminAuditLog::forAction(AdminAuditLog::MFA_CHALLENGE_PASSED)
@@ -142,13 +141,13 @@ it('clears the cache entry after successful verification', function () {
     [$admin, $secret] = adminWithMfa();
 
     $mfaToken = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'Password1!',
     ])->json('data.mfa_token');
 
     $this->postJson('/api/admin/auth/mfa/verify', [
         'mfa_token' => $mfaToken,
-        'code'      => totpCode($secret),
+        'code' => totpCode($secret),
     ])->assertOk();
 
     expect(Cache::get(AdminMfaService::challengeKey($mfaToken)))->toBeNull();
@@ -160,13 +159,13 @@ it('accepts a valid recovery code and issues a token', function () {
     [$admin, $secret, $plainCodes] = adminWithMfa();
 
     $mfaToken = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'Password1!',
     ])->json('data.mfa_token');
 
     $res = $this->postJson('/api/admin/auth/mfa/verify', [
         'mfa_token' => $mfaToken,
-        'code'      => $plainCodes[0],
+        'code' => $plainCodes[0],
     ]);
 
     $res->assertOk()
@@ -177,13 +176,13 @@ it('records mfa.recovery_used when a recovery code is consumed', function () {
     [$admin, $secret, $plainCodes] = adminWithMfa();
 
     $mfaToken = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'Password1!',
     ])->json('data.mfa_token');
 
     $this->postJson('/api/admin/auth/mfa/verify', [
         'mfa_token' => $mfaToken,
-        'code'      => $plainCodes[0],
+        'code' => $plainCodes[0],
     ])->assertOk();
 
     $log = AdminAuditLog::forAction(AdminAuditLog::MFA_RECOVERY_USED)
@@ -197,13 +196,13 @@ it('removes the consumed recovery code from the stored set', function () {
     [$admin, $secret, $plainCodes] = adminWithMfa();
 
     $mfaToken = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'Password1!',
     ])->json('data.mfa_token');
 
     $this->postJson('/api/admin/auth/mfa/verify', [
         'mfa_token' => $mfaToken,
-        'code'      => $plainCodes[0],
+        'code' => $plainCodes[0],
     ])->assertOk();
 
     $remaining = $admin->fresh()->mfa_recovery_codes;
@@ -216,13 +215,13 @@ it('rejects an invalid TOTP code and records mfa.challenge_failed', function () 
     [$admin] = adminWithMfa();
 
     $mfaToken = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'Password1!',
     ])->json('data.mfa_token');
 
     $res = $this->postJson('/api/admin/auth/mfa/verify', [
         'mfa_token' => $mfaToken,
-        'code'      => '000000',
+        'code' => '000000',
     ]);
 
     $res->assertStatus(422)
@@ -238,7 +237,7 @@ it('rejects an invalid TOTP code and records mfa.challenge_failed', function () 
 it('rejects an expired or unknown mfa_token', function () {
     $this->postJson('/api/admin/auth/mfa/verify', [
         'mfa_token' => 'nonexistent-token-uuid',
-        'code'      => '123456',
+        'code' => '123456',
     ])->assertStatus(401)
         ->assertJsonPath('error.code', 'MFA_TOKEN_INVALID');
 });
@@ -280,7 +279,7 @@ it('confirm persists the secret and returns recovery codes on valid code', funct
     $token = $admin->createToken('admin-session')->plainTextToken;
 
     // Generate a pending secret manually
-    $totp   = new Google2FA();
+    $totp = new Google2FA;
     $secret = $totp->generateSecretKey(32);
     Cache::put(AdminMfaService::pendingKey($admin->id), $secret, now()->addMinutes(10));
 
@@ -299,7 +298,7 @@ it('confirm records mfa.enabled', function () {
     $admin = adminWithoutMfa();
     $token = $admin->createToken('admin-session')->plainTextToken;
 
-    $totp   = new Google2FA();
+    $totp = new Google2FA;
     $secret = $totp->generateSecretKey(32);
     Cache::put(AdminMfaService::pendingKey($admin->id), $secret, now()->addMinutes(10));
 
@@ -318,7 +317,7 @@ it('confirm rejects an invalid code', function () {
     $admin = adminWithoutMfa();
     $token = $admin->createToken('admin-session')->plainTextToken;
 
-    $totp   = new Google2FA();
+    $totp = new Google2FA;
     $secret = $totp->generateSecretKey(32);
     Cache::put(AdminMfaService::pendingKey($admin->id), $secret, now()->addMinutes(10));
 
@@ -344,7 +343,7 @@ it('confirm returns 422 when the pending secret has expired', function () {
 
 it('disable clears MFA on correct password', function () {
     [$admin] = adminWithMfa();
-    $token   = $admin->createToken('admin-session')->plainTextToken;
+    $token = $admin->createToken('admin-session')->plainTextToken;
 
     $this->withToken($token)->deleteJson('/api/admin/auth/mfa', [
         'password' => 'Password1!',
@@ -356,7 +355,7 @@ it('disable clears MFA on correct password', function () {
 
 it('disable records mfa.disabled', function () {
     [$admin] = adminWithMfa();
-    $token   = $admin->createToken('admin-session')->plainTextToken;
+    $token = $admin->createToken('admin-session')->plainTextToken;
 
     $this->withToken($token)->deleteJson('/api/admin/auth/mfa', [
         'password' => 'Password1!',
@@ -371,7 +370,7 @@ it('disable records mfa.disabled', function () {
 
 it('disable rejects an incorrect password', function () {
     [$admin] = adminWithMfa();
-    $token   = $admin->createToken('admin-session')->plainTextToken;
+    $token = $admin->createToken('admin-session')->plainTextToken;
 
     $this->withToken($token)->deleteJson('/api/admin/auth/mfa', [
         'password' => 'WrongPassword!',

@@ -10,6 +10,7 @@ use App\Notifications\ConjunctionAlertNotification;
 use App\Services\SpaceTrackClient;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -34,7 +35,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ConjunctionSyncCommand extends Command
 {
-    protected $signature   = 'conjunctions:sync
+    protected $signature = 'conjunctions:sync
                                 {--dry-run : Fetch and parse CDM data but skip DB writes and notifications}';
 
     protected $description = 'Fetch real conjunction data from Space-Track CDM and store locally';
@@ -42,13 +43,14 @@ class ConjunctionSyncCommand extends Command
     public function handle(SpaceTrackClient $client): int
     {
         $isDryRun = $this->option('dry-run');
-        $user     = config('services.space_track.user');
-        $pass     = config('services.space_track.pass');
+        $user = config('services.space_track.user');
+        $pass = config('services.space_track.pass');
 
         if (! $user || ! $pass) {
             $this->warn('SPACE_TRACK_USER / SPACE_TRACK_PASS not configured.');
             $this->warn('Skipping CDM sync. Set these in .env to enable real conjunction data.');
             $this->warn('Free account: https://www.space-track.org/auth/#/login');
+
             return self::SUCCESS;
         }
 
@@ -56,6 +58,7 @@ class ConjunctionSyncCommand extends Command
 
         if (! $client->login($user, $pass)) {
             $this->error('Space-Track login failed. Check SPACE_TRACK_USER / SPACE_TRACK_PASS in .env.');
+
             return self::FAILURE;
         }
 
@@ -64,29 +67,32 @@ class ConjunctionSyncCommand extends Command
 
         if (empty($cdmData)) {
             $this->warn('No CDM events returned. Space-Track may be unavailable or returning empty data.');
+
             return self::SUCCESS;
         }
 
-        $this->info('Received ' . count($cdmData) . ' CDM records.');
+        $this->info('Received '.count($cdmData).' CDM records.');
 
         // Load watched NORAD IDs once — group by NORAD ID for O(1) lookup.
         $watchedByNorad = WatchedSatellite::with('user')->get()->groupBy('norad_id');
 
-        $upserted      = 0;
+        $upserted = 0;
         $alertsCreated = 0;
-        $skipped       = 0;
+        $skipped = 0;
 
         foreach ($cdmData as $raw) {
             try {
                 $event = $this->processCdmRecord($raw, $isDryRun);
             } catch (\Throwable $e) {
-                Log::warning('[ConjunctionSync] Could not process CDM record: ' . $e->getMessage(), ['raw' => $raw]);
+                Log::warning('[ConjunctionSync] Could not process CDM record: '.$e->getMessage(), ['raw' => $raw]);
                 $skipped++;
+
                 continue;
             }
 
             if ($event === null) {
                 $skipped++;
+
                 continue;
             }
 
@@ -116,11 +122,12 @@ class ConjunctionSyncCommand extends Command
             return null;
         }
 
-        $tca     = $this->parseUtc($raw['TCA'] ?? '');
+        $tca = $this->parseUtc($raw['TCA'] ?? '');
         $created = $this->parseUtc($raw['CREATED'] ?? '');
 
         if ($tca === null) {
             Log::debug("[ConjunctionSync] Skipping CDM {$cdmId} — unparseable TCA.");
+
             return null;
         }
 
@@ -136,7 +143,7 @@ class ConjunctionSyncCommand extends Command
         $sat2 = str_pad($sat2, 5, '0', STR_PAD_LEFT);
 
         $minRng = (float) ($raw['MIN_RNG'] ?? 0);
-        $pc     = isset($raw['PC']) && $raw['PC'] !== '' ? (float) $raw['PC'] : null;
+        $pc = isset($raw['PC']) && $raw['PC'] !== '' ? (float) $raw['PC'] : null;
 
         if ($isDryRun) {
             $this->line(sprintf(
@@ -148,37 +155,38 @@ class ConjunctionSyncCommand extends Command
                 $minRng,
                 $pc !== null ? number_format($pc, 8) : 'N/A',
             ));
+
             // Return a transient model (not persisted) so callers can inspect the value.
             return new ConjunctionEvent([
-                'cdm_id'               => $cdmId,
-                'created_at_cdm'       => $created,
-                'tca'                  => $tca,
-                'min_range_km'         => $minRng,
-                'probability'          => $pc,
+                'cdm_id' => $cdmId,
+                'created_at_cdm' => $created,
+                'tca' => $tca,
+                'min_range_km' => $minRng,
+                'probability' => $pc,
                 'emergency_reportable' => ($raw['EMERGENCY_REPORTABLE'] ?? 'N') === 'Y',
-                'sat1_norad_id'        => $sat1,
-                'sat1_name'            => substr((string) ($raw['SAT_1_NAME'] ?? $sat1), 0, 120),
-                'sat2_norad_id'        => $sat2,
-                'sat2_name'            => substr((string) ($raw['SAT_2_NAME'] ?? $sat2), 0, 120),
-                'source'               => 'space_track_cdm',
-                'fetched_at'           => now(),
+                'sat1_norad_id' => $sat1,
+                'sat1_name' => substr((string) ($raw['SAT_1_NAME'] ?? $sat1), 0, 120),
+                'sat2_norad_id' => $sat2,
+                'sat2_name' => substr((string) ($raw['SAT_2_NAME'] ?? $sat2), 0, 120),
+                'source' => 'space_track_cdm',
+                'fetched_at' => now(),
             ]);
         }
 
         return ConjunctionEvent::updateOrCreate(
             ['cdm_id' => $cdmId],
             [
-                'created_at_cdm'       => $created,
-                'tca'                  => $tca,
-                'min_range_km'         => $minRng,
-                'probability'          => $pc,
+                'created_at_cdm' => $created,
+                'tca' => $tca,
+                'min_range_km' => $minRng,
+                'probability' => $pc,
                 'emergency_reportable' => ($raw['EMERGENCY_REPORTABLE'] ?? 'N') === 'Y',
-                'sat1_norad_id'        => $sat1,
-                'sat1_name'            => substr((string) ($raw['SAT_1_NAME'] ?? $sat1), 0, 120),
-                'sat2_norad_id'        => $sat2,
-                'sat2_name'            => substr((string) ($raw['SAT_2_NAME'] ?? $sat2), 0, 120),
-                'source'               => 'space_track_cdm',
-                'fetched_at'           => now(),
+                'sat1_norad_id' => $sat1,
+                'sat1_name' => substr((string) ($raw['SAT_1_NAME'] ?? $sat1), 0, 120),
+                'sat2_norad_id' => $sat2,
+                'sat2_name' => substr((string) ($raw['SAT_2_NAME'] ?? $sat2), 0, 120),
+                'source' => 'space_track_cdm',
+                'fetched_at' => now(),
             ],
         );
     }
@@ -189,7 +197,7 @@ class ConjunctionSyncCommand extends Command
      * For a given CDM event, create conjunction_alerts for any watched satellite
      * that appears as sat1 or sat2. Returns the number of new alerts created.
      *
-     * @param  \Illuminate\Support\Collection<string, \Illuminate\Support\Collection>  $watchedByNorad
+     * @param  Collection<string, Collection>  $watchedByNorad
      */
     private function generateAlerts(ConjunctionEvent $event, $watchedByNorad): int
     {
@@ -198,9 +206,9 @@ class ConjunctionSyncCommand extends Command
         // Check both directions: sat1 as primary, sat2 as secondary; and vice-versa.
         $pairs = [
             ['primary' => $event->sat1_norad_id, 'primary_name' => $event->sat1_name,
-             'secondary' => $event->sat2_norad_id, 'secondary_name' => $event->sat2_name],
+                'secondary' => $event->sat2_norad_id, 'secondary_name' => $event->sat2_name],
             ['primary' => $event->sat2_norad_id, 'primary_name' => $event->sat2_name,
-             'secondary' => $event->sat1_norad_id, 'secondary_name' => $event->sat1_name],
+                'secondary' => $event->sat1_norad_id, 'secondary_name' => $event->sat1_name],
         ];
 
         foreach ($pairs as $pair) {
@@ -224,15 +232,15 @@ class ConjunctionSyncCommand extends Command
             $riskScore = $event->riskScore();
 
             $alert = ConjunctionAlert::create([
-                'primary_norad_id'    => $pair['primary'],
-                'primary_name'        => $pair['primary_name'],
-                'secondary_norad_id'  => $pair['secondary'],
-                'secondary_name'      => $pair['secondary_name'],
-                'tca'                 => $tca,
-                'miss_distance_km'    => $event->min_range_km,
-                'probability'         => $event->probability,
-                'risk_score'          => $riskScore,
-                'source'              => 'space_track_cdm',
+                'primary_norad_id' => $pair['primary'],
+                'primary_name' => $pair['primary_name'],
+                'secondary_norad_id' => $pair['secondary'],
+                'secondary_name' => $pair['secondary_name'],
+                'tca' => $tca,
+                'miss_distance_km' => $event->min_range_km,
+                'probability' => $event->probability,
+                'risk_score' => $riskScore,
+                'source' => 'space_track_cdm',
                 'conjunction_event_id' => $event->id,
             ]);
 

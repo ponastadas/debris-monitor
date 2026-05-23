@@ -27,12 +27,12 @@ class SatelliteFactory extends Factory
         $sample = fake()->randomElement(self::SAMPLES);
 
         return [
-            'norad_id'      => $sample['norad_id'],
-            'name'          => $sample['name'],
-            'object_type'   => $sample['object_type'],
-            'is_active'     => $sample['object_type'] === 'satellite',
+            'norad_id' => $sample['norad_id'],
+            'name' => $sample['name'],
+            'object_type' => $sample['object_type'],
+            'is_active' => $sample['object_type'] === 'satellite',
             'catalog_source' => 'celestrak',
-            'last_seen_at'  => now(),
+            'last_seen_at' => now(),
         ];
     }
 

@@ -694,7 +694,6 @@ export default function DebrisMonitor({ onTrack }) {
       // Inertia
       const drag = dragRef.current;
       if (!drag.active) {
-        const globe = sceneRef.current?.getObjectByProperty("type", "Group") || mesh.parent;
         sceneRef.current.rotation.y += drag.velX * 0.0012;
         sceneRef.current.rotation.x += drag.velY * 0.0012;
         drag.velX *= 0.94;

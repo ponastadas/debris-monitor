@@ -17,16 +17,16 @@ class AdminSubscriptionController extends Controller
             ->orderByDesc('created_at')
             ->paginate(25)
             ->through(fn (Subscription $s) => [
-                'id'                   => $s->id,
-                'user_id'              => $s->user_id,
-                'user_name'            => $s->user?->name,
-                'user_email'           => $s->user?->email,
-                'plan'                 => $s->plan,
-                'status'               => $s->status,
+                'id' => $s->id,
+                'user_id' => $s->user_id,
+                'user_name' => $s->user?->name,
+                'user_email' => $s->user?->email,
+                'plan' => $s->plan,
+                'status' => $s->status,
                 'current_period_start' => $s->current_period_start?->toIso8601String(),
-                'current_period_end'   => $s->current_period_end?->toIso8601String(),
-                'canceled_at'          => $s->canceled_at?->toIso8601String(),
-                'created_at'           => $s->created_at->toIso8601String(),
+                'current_period_end' => $s->current_period_end?->toIso8601String(),
+                'canceled_at' => $s->canceled_at?->toIso8601String(),
+                'created_at' => $s->created_at->toIso8601String(),
             ]);
 
         return $this->success($subscriptions);

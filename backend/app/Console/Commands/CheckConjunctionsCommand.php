@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 
 class CheckConjunctionsCommand extends Command
 {
-    protected $signature   = 'conjunctions:check
+    protected $signature = 'conjunctions:check
                                 {--dry-run : Detect conjunctions but skip notifications and DB writes}';
 
     protected $description = 'Screen watched satellites for conjunction threats in the next 5 days';
@@ -32,9 +32,11 @@ class CheckConjunctionsCommand extends Command
         'rocket-bodies',
     ];
 
-    private const CELESTRAK_TLE_URL   = 'https://celestrak.org/NORAD/elements/gp.php';
-    private const CELESTRAK_GROUP_URL  = 'https://celestrak.org/NORAD/elements/gp.php';
-    private const NOTIFY_HORIZON_DAYS  = 5;
+    private const CELESTRAK_TLE_URL = 'https://celestrak.org/NORAD/elements/gp.php';
+
+    private const CELESTRAK_GROUP_URL = 'https://celestrak.org/NORAD/elements/gp.php';
+
+    private const NOTIFY_HORIZON_DAYS = 5;
 
     public function handle(TlePropagator $propagator): int
     {
@@ -45,6 +47,7 @@ class CheckConjunctionsCommand extends Command
 
         if ($watched->isEmpty()) {
             $this->info('No satellites being watched. Nothing to do.');
+
             return self::SUCCESS;
         }
 
@@ -65,7 +68,7 @@ class CheckConjunctionsCommand extends Command
 
             if ($localSat && $localSat->currentTle) {
                 $tle = [
-                    'name'  => $localSat->name,
+                    'name' => $localSat->name,
                     'line1' => $localSat->currentTle->line1,
                     'line2' => $localSat->currentTle->line2,
                 ];
@@ -76,33 +79,35 @@ class CheckConjunctionsCommand extends Command
 
             if ($tle === null) {
                 $this->warn("  Could not fetch TLE for NORAD {$sat->norad_id} ({$sat->name})");
+
                 continue;
             }
             if (! $isDryRun) {
                 $sat->update([
-                    'name'           => $tle['name'],
-                    'tle_line1'      => $tle['line1'],
-                    'tle_line2'      => $tle['line2'],
+                    'name' => $tle['name'],
+                    'tle_line1' => $tle['line1'],
+                    'tle_line2' => $tle['line2'],
                     'tle_fetched_at' => now(),
                 ]);
             }
-            $sat->name      = $tle['name'];
+            $sat->name = $tle['name'];
             $sat->tle_line1 = $tle['line1'];
             $sat->tle_line2 = $tle['line2'];
         }
 
         // ── 3. Fetch debris catalog ───────────────────────────────────────
         $debrisCatalog = $this->fetchDebrisCatalog();
-        $this->info('  Debris catalog: ' . count($debrisCatalog) . ' objects loaded.');
+        $this->info('  Debris catalog: '.count($debrisCatalog).' objects loaded.');
 
         if (empty($debrisCatalog)) {
             $this->error('Debris catalog empty — aborting.');
+
             return self::FAILURE;
         }
 
         // ── 4. Screen each watched satellite against every debris object ───
-        $windowStart = new DateTime();
-        $newAlerts   = 0;
+        $windowStart = new DateTime;
+        $newAlerts = 0;
 
         $bar = $this->output->createProgressBar($watched->count());
         $bar->start();
@@ -110,6 +115,7 @@ class CheckConjunctionsCommand extends Command
         foreach ($watched as $sat) {
             if (! $sat->tle_line1 || ! $sat->tle_line2) {
                 $bar->advance();
+
                 continue;
             }
 
@@ -155,18 +161,19 @@ class CheckConjunctionsCommand extends Command
 
                 if ($isDryRun) {
                     $newAlerts++;
+
                     continue;
                 }
 
                 $alert = ConjunctionAlert::create([
-                    'primary_norad_id'   => $sat->norad_id,
-                    'primary_name'       => $sat->name ?? $sat->norad_id,
+                    'primary_norad_id' => $sat->norad_id,
+                    'primary_name' => $sat->name ?? $sat->norad_id,
                     'secondary_norad_id' => $debris['norad_id'],
-                    'secondary_name'     => $debris['name'],
-                    'tca'                => $tcaRounded,
-                    'miss_distance_km'   => $result['miss_km'],
-                    'risk_score'         => $result['risk_score'],
-                    'source'             => 'sgp4',
+                    'secondary_name' => $debris['name'],
+                    'tca' => $tcaRounded,
+                    'miss_distance_km' => $result['miss_km'],
+                    'risk_score' => $result['risk_score'],
+                    'source' => 'sgp4',
                 ]);
 
                 $this->notifyWatchers($sat->norad_id, $alert);
@@ -194,7 +201,7 @@ class CheckConjunctionsCommand extends Command
     {
         try {
             $response = Http::timeout(10)->get(self::CELESTRAK_TLE_URL, [
-                'CATNR'  => $noradId,
+                'CATNR' => $noradId,
                 'FORMAT' => 'TLE',
             ]);
 
@@ -205,6 +212,7 @@ class CheckConjunctionsCommand extends Command
             return $this->parseTleBlock($response->body());
         } catch (\Throwable $e) {
             Log::warning("TLE fetch failed for {$noradId}: {$e->getMessage()}");
+
             return null;
         }
     }
@@ -221,17 +229,18 @@ class CheckConjunctionsCommand extends Command
         foreach (self::DEBRIS_GROUPS as $group) {
             try {
                 $response = Http::timeout(30)->get(self::CELESTRAK_GROUP_URL, [
-                    'GROUP'  => $group,
+                    'GROUP' => $group,
                     'FORMAT' => 'TLE',
                 ]);
 
                 if (! $response->ok()) {
                     $this->warn("  Could not fetch group: {$group}");
+
                     continue;
                 }
 
                 $entries = $this->parseTleList($response->body());
-                $this->line("  {$group}: " . count($entries) . ' objects');
+                $this->line("  {$group}: ".count($entries).' objects');
                 $catalog = array_merge($catalog, $entries);
             } catch (\Throwable $e) {
                 Log::warning("Debris fetch failed for {$group}: {$e->getMessage()}");
@@ -239,12 +248,12 @@ class CheckConjunctionsCommand extends Command
         }
 
         // Remove duplicates by NORAD ID
-        $seen   = [];
+        $seen = [];
         $unique = [];
         foreach ($catalog as $entry) {
             if (! isset($seen[$entry['norad_id']])) {
                 $seen[$entry['norad_id']] = true;
-                $unique[]                 = $entry;
+                $unique[] = $entry;
             }
         }
 
@@ -268,7 +277,7 @@ class CheckConjunctionsCommand extends Command
         }
 
         return [
-            'name'  => $lines[0],
+            'name' => $lines[0],
             'line1' => $lines[1],
             'line2' => $lines[2],
         ];
@@ -281,14 +290,14 @@ class CheckConjunctionsCommand extends Command
      */
     private function parseTleList(string $raw): array
     {
-        $lines   = array_values(array_filter(
+        $lines = array_values(array_filter(
             array_map('trim', explode("\n", trim($raw))),
             fn ($l) => $l !== ''
         ));
         $entries = [];
 
         for ($i = 0; $i + 2 < count($lines); $i += 3) {
-            $name  = $lines[$i];
+            $name = $lines[$i];
             $line1 = $lines[$i + 1];
             $line2 = $lines[$i + 2];
 
@@ -300,9 +309,9 @@ class CheckConjunctionsCommand extends Command
 
             $entries[] = [
                 'norad_id' => $noradId,
-                'name'     => $name,
-                'line1'    => $line1,
-                'line2'    => $line2,
+                'name' => $name,
+                'line1' => $line1,
+                'line2' => $line2,
             ];
         }
 

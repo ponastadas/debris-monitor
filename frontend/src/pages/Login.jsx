@@ -42,7 +42,7 @@ export default function Login() {
     setErrors({});
     setLoading(true);
     try {
-      const user = await login(form.email, form.password);
+      await login(form.email, form.password);
       navigate('/', { replace: true });
     } catch (err) {
       if (err.type === 'VALIDATION') {

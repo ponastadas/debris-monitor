@@ -17,10 +17,10 @@ class AdminUserController extends Controller
         $admin = auth('admin')->user();
 
         $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
+            'name' => $request->name,
+            'email' => $request->email,
             'password' => $request->password, // hashed by the cast on User
-            'status'   => $request->input('status', 'active'),
+            'status' => $request->input('status', 'active'),
         ]);
 
         AdminAuditLog::record(
@@ -57,11 +57,11 @@ class AdminUserController extends Controller
 
         return $this->success(array_merge($this->userResource($user), [
             'api_keys_count' => $user->apiKeys->count(),
-            'api_keys'       => $user->apiKeys->map(fn ($k) => [
-                'id'         => $k->id,
-                'name'       => $k->name,
-                'tier'       => $k->tier,
-                'last_used'  => $k->last_used_at?->toIso8601String(),
+            'api_keys' => $user->apiKeys->map(fn ($k) => [
+                'id' => $k->id,
+                'name' => $k->name,
+                'tier' => $k->tier,
+                'last_used' => $k->last_used_at?->toIso8601String(),
                 'created_at' => $k->created_at->toIso8601String(),
             ]),
         ]));
@@ -70,7 +70,7 @@ class AdminUserController extends Controller
     public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
         $admin = auth('admin')->user();
-        $data  = $request->only(['name', 'status']);
+        $data = $request->only(['name', 'status']);
 
         if (isset($data['status']) && $data['status'] === 'suspended' && $user->status !== 'suspended') {
             $data['suspended_at'] = now();
@@ -125,22 +125,22 @@ class AdminUserController extends Controller
 
         return $this->success([
             'token' => $token,
-            'user'  => ['id' => $user->id, 'name' => $user->name, 'email' => $user->email],
+            'user' => ['id' => $user->id, 'name' => $user->name, 'email' => $user->email],
         ]);
     }
 
     private function userResource(User $user): array
     {
         return [
-            'id'                  => $user->id,
-            'name'                => $user->name,
-            'email'               => $user->email,
-            'status'              => $user->status ?? 'active',
-            'subscription_plan'   => $user->currentPlan(),
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'status' => $user->status ?? 'active',
+            'subscription_plan' => $user->currentPlan(),
             'subscription_status' => $user->subscription?->status ?? 'none',
-            'api_keys_count'      => $user->api_keys_count ?? null,
-            'suspended_at'        => $user->suspended_at?->toIso8601String(),
-            'created_at'          => $user->created_at->toIso8601String(),
+            'api_keys_count' => $user->api_keys_count ?? null,
+            'suspended_at' => $user->suspended_at?->toIso8601String(),
+            'created_at' => $user->created_at->toIso8601String(),
         ];
     }
 }

@@ -9,8 +9,8 @@ use Illuminate\Support\Facades\Http;
 
 it('returns empty array for short queries', function () {
     $this->getJson('/api/satellites/search?q=I')
-         ->assertOk()
-         ->assertJson(['success' => true, 'data' => []]);
+        ->assertOk()
+        ->assertJson(['success' => true, 'data' => []]);
 });
 
 it('searches by name from local catalog', function () {
@@ -21,9 +21,9 @@ it('searches by name from local catalog', function () {
     TleRecord::factory()->fresh()->for($hst)->create();
 
     $this->getJson('/api/satellites/search?q=ISS')
-         ->assertOk()
-         ->assertJsonPath('data.0.name', 'ISS (ZARYA)')
-         ->assertJsonCount(1, 'data');
+        ->assertOk()
+        ->assertJsonPath('data.0.name', 'ISS (ZARYA)')
+        ->assertJsonCount(1, 'data');
 });
 
 it('searches by norad_id from local catalog', function () {
@@ -31,14 +31,14 @@ it('searches by norad_id from local catalog', function () {
     TleRecord::factory()->fresh()->for($iss)->create();
 
     $this->getJson('/api/satellites/search?q=25544')
-         ->assertOk()
-         ->assertJsonPath('data.0.norad_id', '25544');
+        ->assertOk()
+        ->assertJsonPath('data.0.norad_id', '25544');
 });
 
 it('returns empty when local catalog has no match', function () {
     $this->getJson('/api/satellites/search?q=ISS')
-         ->assertOk()
-         ->assertJson(['success' => true, 'data' => []]);
+        ->assertOk()
+        ->assertJson(['success' => true, 'data' => []]);
 });
 
 it('limits results to 10 matches', function () {
@@ -48,8 +48,8 @@ it('limits results to 10 matches', function () {
     }
 
     $this->getJson('/api/satellites/search?q=DEBRIS')
-         ->assertOk()
-         ->assertJsonCount(10, 'data');
+        ->assertOk()
+        ->assertJsonCount(10, 'data');
 });
 
 it('search only uses local catalog', function () {
@@ -57,8 +57,8 @@ it('search only uses local catalog', function () {
     TleRecord::factory()->fresh()->for($iss)->create();
 
     $this->getJson('/api/satellites/search?q=ISS')
-         ->assertOk()
-         ->assertJsonPath('data.0.name', 'ISS (ZARYA)');
+        ->assertOk()
+        ->assertJsonPath('data.0.name', 'ISS (ZARYA)');
 });
 
 it('caches search results for repeated queries', function () {
@@ -67,17 +67,17 @@ it('caches search results for repeated queries', function () {
 
     // First request — populates cache
     $this->getJson('/api/satellites/search?q=ISS')
-         ->assertOk()
-         ->assertJsonPath('data.0.norad_id', '25544');
+        ->assertOk()
+        ->assertJsonPath('data.0.norad_id', '25544');
 
     // Delete the satellite from DB to prove cache is being used
-    \App\Models\TleRecord::where('satellite_id', $iss->id)->delete();
+    TleRecord::where('satellite_id', $iss->id)->delete();
     $iss->delete();
 
     // Second request — must still return the cached result
     $this->getJson('/api/satellites/search?q=ISS')
-         ->assertOk()
-         ->assertJsonPath('data.0.norad_id', '25544');
+        ->assertOk()
+        ->assertJsonPath('data.0.norad_id', '25544');
 });
 
 // ── Search ↔ show consistency guarantee ──────────────────────────────────────
@@ -88,8 +88,8 @@ it('search does not return satellites without a current TLE', function () {
     Satellite::factory()->iss()->create(); // satellite row, no TLE record
 
     $this->getJson('/api/satellites/search?q=ISS')
-         ->assertOk()
-         ->assertJson(['success' => true, 'data' => []]);
+        ->assertOk()
+        ->assertJson(['success' => true, 'data' => []]);
 });
 
 it('satellite returned by local DB search can always be loaded by show', function () {
@@ -102,11 +102,11 @@ it('satellite returned by local DB search can always be loaded by show', functio
     ]);
 
     $searchRes = $this->getJson('/api/satellites/search?q=ISS')->assertOk();
-    $noradId   = $searchRes->json('data.0.norad_id');
+    $noradId = $searchRes->json('data.0.norad_id');
 
     $this->getJson("/api/satellites/{$noradId}")
-         ->assertOk()
-         ->assertJsonPath('data.source', 'local');
+        ->assertOk()
+        ->assertJsonPath('data.source', 'local');
 
     Http::assertNothingSent();
 });
@@ -139,7 +139,7 @@ it('SatelliteController show write leaves exactly one is_current=true row', func
         'celestrak.org/*' => Http::response(
             "ISS (ZARYA)\n".
             "1 25544U 98067A   24001.50000000  .00002182  00000-0  40768-4 0  9990\n".
-            "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129",
+            '2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129',
             200
         ),
     ]);
@@ -162,7 +162,7 @@ it('SatelliteController show write leaves exactly one is_current=true row', func
 $freshTle =
     "ISS (ZARYA)             \n".
     "1 25544U 98067A   26109.50000000  .00002182  00000-0  40768-4 0  9991\n".
-    "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432130";
+    '2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432130';
 
 it('staleness sweep refreshes a satellite with a stale TLE', function () use ($freshTle) {
     Http::fake(['celestrak.org/*' => Http::response($freshTle, 200)]);
@@ -207,7 +207,7 @@ it('staleness sweep respects the SATELLITE_SYNC_STALE_LIMIT cap', function () us
         TleRecord::factory()->for($sat)->create([
             'is_current' => true,
             'fetched_at' => now()->subHours(25 + $i),
-            'line1' => "1 9990{$i}U 20001A   26109.50000000  .00001000  00000-0  10000-4 0  999" . ($i),
+            'line1' => "1 9990{$i}U 20001A   26109.50000000  .00001000  00000-0  10000-4 0  999".($i),
             'line2' => "2 9990{$i}  97.0000 240.0000 0001000 200.0000 160.0000 15.00000000000000",
         ]);
     }
@@ -215,7 +215,7 @@ it('staleness sweep respects the SATELLITE_SYNC_STALE_LIMIT cap', function () us
     Http::fake(['celestrak.org/*' => Http::response($freshTle, 200)]);
 
     $this->artisan('satellites:sync', ['--groups' => 'stations', '--env' => 'testing'])
-         ->assertSuccessful();
+        ->assertSuccessful();
 
     // With default limit 200, all 5 should be swept — we're testing the mechanic
     // works; a true cap test would need env override, so just assert the sweep ran
@@ -258,10 +258,10 @@ it('returns TLE from local DB without calling celestrak', function () {
     ]);
 
     $this->getJson('/api/satellites/25544')
-         ->assertOk()
-         ->assertJsonPath('data.norad_id', '25544')
-         ->assertJsonPath('data.source', 'local')
-         ->assertJsonStructure(['success', 'data' => ['norad_id', 'name', 'tle_line1', 'tle_line2', 'source']]);
+        ->assertOk()
+        ->assertJsonPath('data.norad_id', '25544')
+        ->assertJsonPath('data.source', 'local')
+        ->assertJsonStructure(['success', 'data' => ['norad_id', 'name', 'tle_line1', 'tle_line2', 'source']]);
 
     Http::assertNothingSent();
 });
@@ -271,15 +271,15 @@ it('falls back to celestrak when satellite not in local DB', function () {
         'celestrak.org/*' => Http::response(
             "ISS (ZARYA)\n".
             "1 25544U 98067A   24001.50000000  .00002182  00000-0  40768-4 0  9990\n".
-            "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129",
+            '2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129',
             200
         ),
     ]);
 
     $this->getJson('/api/satellites/25544')
-         ->assertOk()
-         ->assertJsonPath('data.source', 'celestrak')
-         ->assertJsonPath('data.norad_id', '25544');
+        ->assertOk()
+        ->assertJsonPath('data.source', 'celestrak')
+        ->assertJsonPath('data.norad_id', '25544');
 
     Http::assertSentCount(1);
 });
@@ -289,7 +289,7 @@ it('caches the TLE after a fallback celestrak fetch', function () {
         'celestrak.org/*' => Http::response(
             "ISS (ZARYA)\n".
             "1 25544U 98067A   24001.50000000  .00002182  00000-0  40768-4 0  9990\n".
-            "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129",
+            '2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129',
             200
         ),
     ]);
@@ -307,9 +307,9 @@ it('returns 404 for unknown norad id from celestrak', function () {
     ]);
 
     $this->getJson('/api/satellites/9999999')
-         ->assertNotFound()
-         ->assertJsonPath('success', false)
-         ->assertJsonPath('error.code', 'NOT_FOUND');
+        ->assertNotFound()
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('error.code', 'NOT_FOUND');
 });
 
 it('serves stale local TLE even when celestrak is unreachable', function () {
@@ -342,13 +342,13 @@ it('parses and inserts satellites from TLE response', function () {
             "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129\n".
             "TIANGONG-1\n".
             "1 37849U 11053A   24001.50000000  .00002182  00000-0  40768-4 0  9990\n".
-            "2 37849  42.7895 247.4627 0006703 130.5360 325.0288 15.50043005432129",
+            '2 37849  42.7895 247.4627 0006703 130.5360 325.0288 15.50043005432129',
             200
         ),
     ]);
 
     $this->artisan('satellites:sync', ['--groups' => 'stations'])
-         ->assertSuccessful();
+        ->assertSuccessful();
 
     expect(Satellite::count())->toBe(2);
     expect(TleRecord::where('is_current', true)->count())->toBe(2);
@@ -357,7 +357,7 @@ it('parses and inserts satellites from TLE response', function () {
 it('is idempotent — running twice does not duplicate satellites', function () {
     $tleBody = "ISS (ZARYA)\n".
         "1 25544U 98067A   24001.50000000  .00002182  00000-0  40768-4 0  9990\n".
-        "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129";
+        '2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129';
 
     Http::fake(['celestrak.org/*' => Http::response($tleBody, 200)]);
 
@@ -374,13 +374,13 @@ it('dry-run does not write to DB', function () {
         'celestrak.org/*' => Http::response(
             "ISS (ZARYA)\n".
             "1 25544U 98067A   24001.50000000  .00002182  00000-0  40768-4 0  9990\n".
-            "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129",
+            '2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50043005432129',
             200
         ),
     ]);
 
     $this->artisan('satellites:sync', ['--groups' => 'stations', '--dry-run' => true])
-         ->assertSuccessful();
+        ->assertSuccessful();
 
     expect(Satellite::count())->toBe(0);
     expect(TleRecord::count())->toBe(0);
@@ -390,7 +390,7 @@ it('skips unavailable groups gracefully', function () {
     Http::fake(['celestrak.org/*' => Http::response('', 503)]);
 
     $this->artisan('satellites:sync', ['--groups' => 'stations'])
-         ->assertSuccessful(); // command itself succeeds, just logs a warning
+        ->assertSuccessful(); // command itself succeeds, just logs a warning
 
     expect(Satellite::count())->toBe(0);
 });
@@ -399,9 +399,9 @@ it('skips unavailable groups gracefully', function () {
 
 it('catalog endpoint returns empty when catalog not synced', function () {
     $this->getJson('/api/catalog')
-         ->assertOk()
-         ->assertJsonPath('data.count', 0)
-         ->assertJsonPath('data.satellites', []);
+        ->assertOk()
+        ->assertJsonPath('data.count', 0)
+        ->assertJsonPath('data.satellites', []);
 });
 
 it('catalog endpoint returns satellites with TLE data', function () {
@@ -415,9 +415,9 @@ it('catalog endpoint returns satellites with TLE data', function () {
     TleRecord::factory()->fresh()->for(Satellite::where('norad_id', '29228')->first())->create();
 
     $res = $this->getJson('/api/catalog')
-         ->assertOk()
-         ->assertJsonPath('data.count', 2)
-         ->assertJsonStructure(['data' => ['satellites', 'count', 'synced_at']]);
+        ->assertOk()
+        ->assertJsonPath('data.count', 2)
+        ->assertJsonStructure(['data' => ['satellites', 'count', 'synced_at']]);
 
     $first = $res->json('data.satellites.0');
     expect($first)->toHaveKey('norad_id');
@@ -442,14 +442,14 @@ it('catalog endpoint does not include satellites without current TLE', function 
     Satellite::factory()->iss()->create(); // no TLE record
 
     $this->getJson('/api/catalog')
-         ->assertOk()
-         ->assertJsonPath('data.count', 0);
+        ->assertOk()
+        ->assertJsonPath('data.count', 0);
 });
 
 it('catalog endpoint returns cache-control header', function () {
     $this->getJson('/api/catalog')
-         ->assertOk()
-         ->assertHeader('Cache-Control', 'max-age=3600, public');
+        ->assertOk()
+        ->assertHeader('Cache-Control', 'max-age=3600, public');
 });
 
 it('catalog endpoint returns an etag header', function () {
@@ -467,12 +467,12 @@ it('catalog endpoint returns 304 when etag matches', function () {
 
     // First request — get the ETag
     $first = $this->getJson('/api/catalog')->assertOk();
-    $etag  = $first->headers->get('ETag');
+    $etag = $first->headers->get('ETag');
 
     // Second request with matching If-None-Match — expect 304
     $this->withHeaders(['If-None-Match' => $etag])
-         ->get('/api/catalog')
-         ->assertStatus(304);
+        ->get('/api/catalog')
+        ->assertStatus(304);
 });
 
 it('catalog endpoint returns 200 when etag does not match', function () {
@@ -480,12 +480,12 @@ it('catalog endpoint returns 200 when etag does not match', function () {
     TleRecord::factory()->fresh()->for($sat)->create();
 
     $this->withHeaders(['If-None-Match' => '"stale-etag-value"'])
-         ->getJson('/api/catalog')
-         ->assertOk();
+        ->getJson('/api/catalog')
+        ->assertOk();
 });
 
 it('catalog endpoint empty catalog etag is stable', function () {
-    $first  = $this->getJson('/api/catalog')->assertOk();
+    $first = $this->getJson('/api/catalog')->assertOk();
     $second = $this->getJson('/api/catalog')->assertOk();
     expect($first->headers->get('ETag'))->toBe($second->headers->get('ETag'));
 });
@@ -528,8 +528,8 @@ it('catalog endpoint ignores unknown type tokens gracefully', function () {
 
     // 'bogus' maps to no known object_type — WHERE 0=1 → no rows returned
     $this->getJson('/api/catalog?types=bogus')
-         ->assertOk()
-         ->assertJsonPath('data.count', 0);
+        ->assertOk()
+        ->assertJsonPath('data.count', 0);
 });
 
 it('catalog endpoint with no filter returns all object types including rocket and unknown', function () {

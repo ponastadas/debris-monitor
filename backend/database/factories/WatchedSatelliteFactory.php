@@ -25,11 +25,11 @@ class WatchedSatelliteFactory extends Factory
         $sat = fake()->randomElement(self::KNOWN);
 
         return [
-            'user_id'        => User::factory(),
-            'norad_id'       => $sat['norad_id'],
-            'name'           => $sat['name'],
-            'tle_line1'      => null,
-            'tle_line2'      => null,
+            'user_id' => User::factory(),
+            'norad_id' => $sat['norad_id'],
+            'name' => $sat['name'],
+            'tle_line1' => null,
+            'tle_line2' => null,
             'tle_fetched_at' => null,
         ];
     }

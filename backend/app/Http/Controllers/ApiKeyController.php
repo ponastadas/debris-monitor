@@ -14,14 +14,14 @@ class ApiKeyController extends Controller
             ->apiKeys()
             ->get()
             ->map(fn ($key) => [
-                'id'               => $key->id,
-                'name'             => $key->name,
-                'tier'             => $key->tier,
-                'daily_limit'      => $key->daily_limit,
-                'usage_today'      => $key->todayUsageCount(),
+                'id' => $key->id,
+                'name' => $key->name,
+                'tier' => $key->tier,
+                'daily_limit' => $key->daily_limit,
+                'usage_today' => $key->todayUsageCount(),
                 'webhooks_enabled' => $key->webhooks_enabled,
-                'last_used_at'     => $key->last_used_at?->toIso8601String(),
-                'created_at'       => $key->created_at->toIso8601String(),
+                'last_used_at' => $key->last_used_at?->toIso8601String(),
+                'created_at' => $key->created_at->toIso8601String(),
             ]);
 
         return response()->json($keys);
@@ -35,18 +35,18 @@ class ApiKeyController extends Controller
 
         $key = $request->user()->apiKeys()->create([
             'name' => $request->input('name'),
-            'key'  => ApiKey::generate(),
+            'key' => ApiKey::generate(),
             'tier' => 'free',
             ...$defaults,
         ]);
 
         return response()->json([
-            'id'          => $key->id,
-            'name'        => $key->name,
-            'key'         => $key->key,  // shown once only
-            'tier'        => $key->tier,
+            'id' => $key->id,
+            'name' => $key->name,
+            'key' => $key->key,  // shown once only
+            'tier' => $key->tier,
             'daily_limit' => $key->daily_limit,
-            'created_at'  => $key->created_at->toIso8601String(),
+            'created_at' => $key->created_at->toIso8601String(),
         ], 201);
     }
 

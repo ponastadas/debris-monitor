@@ -21,7 +21,7 @@ use Illuminate\Console\Command;
  */
 class PurgeDemoAlertsCommand extends Command
 {
-    protected $signature   = 'alerts:purge-demo
+    protected $signature = 'alerts:purge-demo
                                 {--dry-run : Show what would be deleted without deleting}';
 
     protected $description = 'Delete demo/fake conjunction alerts and events; preserves real CDM and SGP4 rows';
@@ -52,11 +52,13 @@ class PurgeDemoAlertsCommand extends Command
 
         if ($alertCount === 0 && $eventCount === 0) {
             $this->info('Nothing to purge.');
+
             return self::SUCCESS;
         }
 
         if ($isDryRun) {
             $this->warn('[dry-run] No rows deleted. Remove --dry-run to execute.');
+
             return self::SUCCESS;
         }
 

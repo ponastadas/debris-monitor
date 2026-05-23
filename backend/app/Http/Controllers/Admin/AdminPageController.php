@@ -29,7 +29,7 @@ class AdminPageController extends Controller
     public function store(StorePageRequest $request): JsonResponse
     {
         $admin = auth('admin')->user();
-        $data  = $request->validated();
+        $data = $request->validated();
 
         // Auto-generate slug from title if not provided or empty
         if (empty($data['slug'])) {
@@ -55,7 +55,7 @@ class AdminPageController extends Controller
     public function update(UpdatePageRequest $request, Page $page): JsonResponse
     {
         $admin = auth('admin')->user();
-        $data  = $request->validated();
+        $data = $request->validated();
 
         // Regenerate slug if title changed and no explicit slug was provided
         if (isset($data['title']) && ! isset($data['slug'])) {
@@ -100,7 +100,7 @@ class AdminPageController extends Controller
         $admin = auth('admin')->user();
 
         $page->update([
-            'status'       => 'published',
+            'status' => 'published',
             'published_at' => $page->published_at ?? now(),
         ]);
 
@@ -135,24 +135,24 @@ class AdminPageController extends Controller
     private function pageResource(Page $page): array
     {
         return [
-            'id'               => $page->id,
-            'title'            => $page->title,
-            'slug'             => $page->slug,
-            'excerpt'          => $page->excerpt,
-            'content'          => $page->content,
-            'status'           => $page->status,
-            'meta_title'       => $page->meta_title,
+            'id' => $page->id,
+            'title' => $page->title,
+            'slug' => $page->slug,
+            'excerpt' => $page->excerpt,
+            'content' => $page->content,
+            'status' => $page->status,
+            'meta_title' => $page->meta_title,
             'meta_description' => $page->meta_description,
-            'published_at'     => $page->published_at?->toIso8601String(),
-            'created_at'       => $page->created_at->toIso8601String(),
-            'updated_at'       => $page->updated_at->toIso8601String(),
+            'published_at' => $page->published_at?->toIso8601String(),
+            'created_at' => $page->created_at->toIso8601String(),
+            'updated_at' => $page->updated_at->toIso8601String(),
         ];
     }
 
     /** Generate a unique slug, appending -N suffix if necessary. */
     private function uniqueSlug(string $base, ?int $excludeId = null): string
     {
-        $slug    = $base;
+        $slug = $base;
         $counter = 2;
 
         while (

@@ -4,6 +4,7 @@ use App\Models\AdminAccount;
 use App\Models\User;
 use App\Services\AdminMfaService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use PragmaRX\Google2FA\Google2FA;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -11,17 +12,17 @@ use PragmaRX\Google2FA\Google2FA;
 /** Create an admin with a configured TOTP secret so login goes through the MFA challenge flow. */
 function adminWithTotp(): array
 {
-    $totp   = new Google2FA();
+    $totp = new Google2FA;
     $secret = $totp->generateSecretKey(32);
 
-    $mfa   = new AdminMfaService();
+    $mfa = new AdminMfaService;
     $codes = $mfa->generateRecoveryCodes();
 
     $admin = AdminAccount::factory()->create([
-        'email'              => fake()->unique()->safeEmail(),
-        'password'           => bcrypt('secret123'),
-        'is_active'          => true,
-        'mfa_secret'         => $secret,
+        'email' => fake()->unique()->safeEmail(),
+        'password' => bcrypt('secret123'),
+        'is_active' => true,
+        'mfa_secret' => $secret,
         'mfa_recovery_codes' => $mfa->hashRecoveryCodes($codes),
     ]);
 
@@ -32,27 +33,27 @@ function adminWithTotp(): array
 
 it('admin without MFA configured receives mfa_setup_required on login', function () {
     AdminAccount::factory()->create([
-        'email'    => 'admin@test.local',
+        'email' => 'admin@test.local',
         'password' => bcrypt('secret123'),
     ]);
 
     $this->postJson('/api/admin/auth/login', [
-        'email'    => 'admin@test.local',
+        'email' => 'admin@test.local',
         'password' => 'secret123',
     ])
-    ->assertOk()
-    ->assertJsonPath('data.mfa_setup_required', true)
-    ->assertJsonStructure(['data' => ['mfa_setup_required', 'setup_token']]);
+        ->assertOk()
+        ->assertJsonPath('data.mfa_setup_required', true)
+        ->assertJsonStructure(['data' => ['mfa_setup_required', 'setup_token']]);
 });
 
 it('admin without MFA does not receive a session token on login', function () {
     AdminAccount::factory()->create([
-        'email'    => 'admin@test.local',
+        'email' => 'admin@test.local',
         'password' => bcrypt('secret123'),
     ]);
 
     $res = $this->postJson('/api/admin/auth/login', [
-        'email'    => 'admin@test.local',
+        'email' => 'admin@test.local',
         'password' => 'secret123',
     ]);
 
@@ -65,19 +66,19 @@ it('admin with MFA configured receives mfa_required on login', function () {
     [$admin] = adminWithTotp();
 
     $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'secret123',
     ])
-    ->assertOk()
-    ->assertJsonPath('data.mfa_required', true)
-    ->assertJsonStructure(['data' => ['mfa_required', 'mfa_token']]);
+        ->assertOk()
+        ->assertJsonPath('data.mfa_required', true)
+        ->assertJsonStructure(['data' => ['mfa_required', 'mfa_token']]);
 });
 
 it('admin with MFA does not receive a session token on credential step alone', function () {
     [$admin] = adminWithTotp();
 
     $res = $this->postJson('/api/admin/auth/login', [
-        'email'    => $admin->email,
+        'email' => $admin->email,
         'password' => 'secret123',
     ]);
 
@@ -88,11 +89,11 @@ it('admin with MFA does not receive a session token on credential step alone', f
 
 it('setup-init returns qr_code and secret for a valid setup_token', function () {
     $admin = AdminAccount::factory()->create([
-        'email'    => 'setup@test.local',
+        'email' => 'setup@test.local',
         'password' => bcrypt('secret123'),
     ]);
 
-    $setupToken = \Illuminate\Support\Str::uuid()->toString();
+    $setupToken = Str::uuid()->toString();
     Cache::put(AdminMfaService::setupKey($setupToken), $admin->id, now()->addMinutes(15));
 
     $res = $this->postJson('/api/admin/auth/mfa/setup-init', [
@@ -115,21 +116,21 @@ it('setup-init rejects an invalid or expired setup_token', function () {
 
 it('setup-finalize enables MFA and issues a session token', function () {
     $admin = AdminAccount::factory()->create([
-        'email'    => 'finalize@test.local',
+        'email' => 'finalize@test.local',
         'password' => bcrypt('secret123'),
     ]);
 
-    $setupToken = \Illuminate\Support\Str::uuid()->toString();
+    $setupToken = Str::uuid()->toString();
     Cache::put(AdminMfaService::setupKey($setupToken), $admin->id, now()->addMinutes(15));
 
     // Manually put a pending secret in cache (as setup-init would)
-    $totp   = new Google2FA();
+    $totp = new Google2FA;
     $secret = $totp->generateSecretKey(32);
     Cache::put(AdminMfaService::pendingKey($admin->id), $secret, now()->addMinutes(15));
 
     $res = $this->postJson('/api/admin/auth/mfa/setup-finalize', [
         'setup_token' => $setupToken,
-        'code'        => $totp->getCurrentOtp($secret),
+        'code' => $totp->getCurrentOtp($secret),
     ]);
 
     $res->assertOk()
@@ -141,20 +142,20 @@ it('setup-finalize enables MFA and issues a session token', function () {
 
 it('setup-finalize rejects an invalid TOTP code', function () {
     $admin = AdminAccount::factory()->create([
-        'email'    => 'finalize-fail@test.local',
+        'email' => 'finalize-fail@test.local',
         'password' => bcrypt('secret123'),
     ]);
 
-    $setupToken = \Illuminate\Support\Str::uuid()->toString();
+    $setupToken = Str::uuid()->toString();
     Cache::put(AdminMfaService::setupKey($setupToken), $admin->id, now()->addMinutes(15));
 
-    $totp   = new Google2FA();
+    $totp = new Google2FA;
     $secret = $totp->generateSecretKey(32);
     Cache::put(AdminMfaService::pendingKey($admin->id), $secret, now()->addMinutes(15));
 
     $this->postJson('/api/admin/auth/mfa/setup-finalize', [
         'setup_token' => $setupToken,
-        'code'        => '000000',
+        'code' => '000000',
     ])->assertStatus(422)
         ->assertJsonPath('error.code', 'MFA_INVALID');
 
@@ -163,17 +164,17 @@ it('setup-finalize rejects an invalid TOTP code', function () {
 
 it('setup-finalize returns 422 when pending secret has expired', function () {
     $admin = AdminAccount::factory()->create([
-        'email'    => 'no-pending@test.local',
+        'email' => 'no-pending@test.local',
         'password' => bcrypt('secret123'),
     ]);
 
-    $setupToken = \Illuminate\Support\Str::uuid()->toString();
+    $setupToken = Str::uuid()->toString();
     Cache::put(AdminMfaService::setupKey($setupToken), $admin->id, now()->addMinutes(15));
 
     // No pending secret in cache
     $this->postJson('/api/admin/auth/mfa/setup-finalize', [
         'setup_token' => $setupToken,
-        'code'        => '123456',
+        'code' => '123456',
     ])->assertStatus(422)
         ->assertJsonPath('error.code', 'MFA_SETUP_EXPIRED');
 });
@@ -184,25 +185,25 @@ it('admin login fails with wrong password', function () {
     AdminAccount::factory()->create(['email' => 'admin@test.local']);
 
     $this->postJson('/api/admin/auth/login', [
-        'email'    => 'admin@test.local',
+        'email' => 'admin@test.local',
         'password' => 'wrongpassword',
     ])
-    ->assertUnprocessable()
-    ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        ->assertUnprocessable()
+        ->assertJsonPath('error.code', 'VALIDATION_ERROR');
 });
 
 it('admin login fails for an inactive account', function () {
     AdminAccount::factory()->inactive()->create([
-        'email'    => 'inactive@test.local',
+        'email' => 'inactive@test.local',
         'password' => bcrypt('secret123'),
     ]);
 
     $this->postJson('/api/admin/auth/login', [
-        'email'    => 'inactive@test.local',
+        'email' => 'inactive@test.local',
         'password' => 'secret123',
     ])
-    ->assertForbidden()
-    ->assertJsonPath('error.code', 'ACCOUNT_INACTIVE');
+        ->assertForbidden()
+        ->assertJsonPath('error.code', 'ACCOUNT_INACTIVE');
 });
 
 it('admin login requires email and password', function () {
@@ -216,18 +217,18 @@ it('admin token gives access to admin endpoints', function () {
     $token = $admin->createToken('admin-session')->plainTextToken;
 
     $this->withToken($token)
-         ->getJson('/api/admin/auth/me')
-         ->assertOk()
-         ->assertJsonPath('data.email', $admin->email);
+        ->getJson('/api/admin/auth/me')
+        ->assertOk()
+        ->assertJsonPath('data.email', $admin->email);
 });
 
 it('customer token is rejected by admin endpoints', function () {
-    $user  = User::factory()->create();
+    $user = User::factory()->create();
     $token = $user->createToken('spa')->plainTextToken;
 
     $this->withToken($token)
-         ->getJson('/api/admin/auth/me')
-         ->assertUnauthorized();
+        ->getJson('/api/admin/auth/me')
+        ->assertUnauthorized();
 });
 
 it('admin token cannot access customer-only endpoints', function () {
@@ -235,8 +236,8 @@ it('admin token cannot access customer-only endpoints', function () {
     $token = $admin->createToken('admin-session')->plainTextToken;
 
     $this->withToken($token)
-         ->getJson('/api/auth/me')
-         ->assertUnauthorized();
+        ->getJson('/api/auth/me')
+        ->assertUnauthorized();
 });
 
 // ── Deactivation revokes tokens ───────────────────────────────────────────────
@@ -259,8 +260,8 @@ it('a deactivated admin cannot use a token issued before deactivation', function
     $admin->update(['is_active' => false]);
 
     $this->withToken($token)
-         ->getJson('/api/admin/auth/me')
-         ->assertUnauthorized();
+        ->getJson('/api/admin/auth/me')
+        ->assertUnauthorized();
 });
 
 // ── Logout ────────────────────────────────────────────────────────────────────
@@ -272,8 +273,8 @@ it('admin logout deletes the current token from the database', function () {
     expect($admin->tokens()->count())->toBe(1);
 
     $this->withToken($token)
-         ->postJson('/api/admin/auth/logout')
-         ->assertOk();
+        ->postJson('/api/admin/auth/logout')
+        ->assertOk();
 
     expect($admin->tokens()->count())->toBe(0);
 });

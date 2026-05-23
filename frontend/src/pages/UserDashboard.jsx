@@ -77,6 +77,7 @@ function ApiKeysTab() {
       .then((r) => setKeys(r.data.data ?? r.data))
       .catch(() => toast.error('Failed to load API keys'))
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const create = async () => {
@@ -184,7 +185,7 @@ function EntitlementBadge({ label, value, ok }) {
 
 // ── Billing Tab ───────────────────────────────────────────────────────────────
 
-function BillingTab({ user }) {
+function BillingTab() {
   const toast                         = useToast();
   const { refreshUser }               = useAuth();
   const [billing, setBilling]         = useState(null);
@@ -204,6 +205,7 @@ function BillingTab({ user }) {
       .catch(() => toast.error('Failed to load billing info'))
       .finally(() => setLoading(false));
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadBilling(); }, []);
 
   const subscribe = async (plan) => {

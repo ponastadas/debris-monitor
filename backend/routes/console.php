@@ -1,10 +1,11 @@
 <?php
 
+use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
-    $this->comment(\Illuminate\Foundation\Inspiring::quote());
+    $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
 // Sync satellite catalog from Space-Track GP endpoint — 4×/day.

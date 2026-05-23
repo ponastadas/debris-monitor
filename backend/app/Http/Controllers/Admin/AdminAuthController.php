@@ -18,7 +18,7 @@ class AdminAuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $request->validate([
-            'email'    => ['required', 'email'],
+            'email' => ['required', 'email'],
             'password' => ['required', 'string'],
         ]);
 
@@ -71,11 +71,11 @@ class AdminAuthController extends Controller
     {
         $request->validate([
             'mfa_token' => ['required', 'string'],
-            'code'      => ['required', 'string'],
+            'code' => ['required', 'string'],
         ]);
 
         $cacheKey = AdminMfaService::challengeKey($request->mfa_token);
-        $adminId  = Cache::get($cacheKey);
+        $adminId = Cache::get($cacheKey);
 
         if (! $adminId) {
             return $this->error('MFA_TOKEN_INVALID', 'MFA session expired or invalid.', 401);
@@ -85,15 +85,17 @@ class AdminAuthController extends Controller
 
         if (! $admin || ! $admin->isActive()) {
             Cache::forget($cacheKey);
+
             return $this->error('ACCOUNT_INACTIVE', 'This admin account has been deactivated.', 403);
         }
 
-        $mfaService = new AdminMfaService();
+        $mfaService = new AdminMfaService;
 
         // Try TOTP code first
         if ($mfaService->verify($admin, $request->code)) {
             Cache::forget($cacheKey);
             AdminAuditLog::record($admin->id, AdminAuditLog::MFA_CHALLENGE_PASSED);
+
             return $this->issueToken($admin);
         }
 
@@ -101,6 +103,7 @@ class AdminAuthController extends Controller
         if ($mfaService->consumeRecoveryCode($admin, $request->code)) {
             Cache::forget($cacheKey);
             AdminAuditLog::record($admin->id, AdminAuditLog::MFA_RECOVERY_USED);
+
             return $this->issueToken($admin);
         }
 
@@ -122,12 +125,12 @@ class AdminAuthController extends Controller
             return $this->setupTokenError($request->setup_token);
         }
 
-        $mfaService = new AdminMfaService();
-        $secret     = $mfaService->generateSecret();
+        $mfaService = new AdminMfaService;
+        $secret = $mfaService->generateSecret();
         Cache::put(AdminMfaService::pendingKey($admin->id), $secret, now()->addMinutes(15));
 
         $uri = $mfaService->getQrUri($admin, $secret);
-        $qr  = $mfaService->generateQrBase64($uri);
+        $qr = $mfaService->generateQrBase64($uri);
 
         return $this->success(['qr_code' => $qr, 'secret' => $secret]);
     }
@@ -140,7 +143,7 @@ class AdminAuthController extends Controller
     {
         $request->validate([
             'setup_token' => ['required', 'string'],
-            'code'        => ['required', 'string', 'size:6'],
+            'code' => ['required', 'string', 'size:6'],
         ]);
 
         [$admin, $cacheKey] = $this->resolveSetupToken($request->setup_token);
@@ -148,9 +151,9 @@ class AdminAuthController extends Controller
             return $this->setupTokenError($request->setup_token);
         }
 
-        $mfaService = new AdminMfaService();
+        $mfaService = new AdminMfaService;
         $pendingKey = AdminMfaService::pendingKey($admin->id);
-        $secret     = Cache::get($pendingKey);
+        $secret = Cache::get($pendingKey);
 
         if (! $secret) {
             return $this->error('MFA_SETUP_EXPIRED', 'MFA setup session expired. Please start again.', 422);
@@ -160,11 +163,11 @@ class AdminAuthController extends Controller
             return $this->error('MFA_INVALID', 'Invalid authentication code.', 422);
         }
 
-        $plainCodes  = $mfaService->generateRecoveryCodes();
+        $plainCodes = $mfaService->generateRecoveryCodes();
         $hashedCodes = $mfaService->hashRecoveryCodes($plainCodes);
 
         $admin->update([
-            'mfa_secret'         => $secret,
+            'mfa_secret' => $secret,
             'mfa_recovery_codes' => $hashedCodes,
         ]);
 
@@ -202,7 +205,7 @@ class AdminAuthController extends Controller
     private function resolveSetupToken(string $setupToken): array
     {
         $cacheKey = AdminMfaService::setupKey($setupToken);
-        $adminId  = Cache::get($cacheKey);
+        $adminId = Cache::get($cacheKey);
 
         if (! $adminId) {
             return [null, null];
@@ -212,6 +215,7 @@ class AdminAuthController extends Controller
 
         if (! $admin || ! $admin->isActive()) {
             Cache::forget($cacheKey);
+
             return [null, null];
         }
 
@@ -222,6 +226,7 @@ class AdminAuthController extends Controller
     {
         // Clear in case it exists but belongs to an inactive account
         Cache::forget(AdminMfaService::setupKey($setupToken));
+
         return $this->error('SETUP_TOKEN_INVALID', 'Setup session expired or invalid.', 401);
     }
 
@@ -252,11 +257,11 @@ class AdminAuthController extends Controller
     private function adminResource(AdminAccount $admin): array
     {
         return [
-            'id'            => $admin->id,
-            'name'          => $admin->name,
-            'email'         => $admin->email,
-            'is_active'     => $admin->is_active,
-            'mfa_enabled'   => $admin->hasMfa(),
+            'id' => $admin->id,
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'is_active' => $admin->is_active,
+            'mfa_enabled' => $admin->hasMfa(),
             'last_login_at' => $admin->last_login_at?->toIso8601String(),
         ];
     }

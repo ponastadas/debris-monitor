@@ -28,8 +28,8 @@ class Subscription extends Model
     {
         return [
             'current_period_start' => 'datetime',
-            'current_period_end'   => 'datetime',
-            'canceled_at'          => 'datetime',
+            'current_period_end' => 'datetime',
+            'canceled_at' => 'datetime',
         ];
     }
 

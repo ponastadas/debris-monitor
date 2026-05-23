@@ -1,6 +1,6 @@
 <?php
 
-require __DIR__ . '/../vendor/autoload.php';
+require __DIR__.'/../vendor/autoload.php';
 
 // Inject a per-run APP_KEY before the application boots so that model casts
 // using `encrypted` (e.g. AdminAccount.mfa_secret) never throw
@@ -11,8 +11,8 @@ require __DIR__ . '/../vendor/autoload.php';
 //
 // No hardcoded key is committed anywhere — each test run gets a fresh random key.
 if (empty(getenv('APP_KEY'))) {
-    $key = 'base64:' . base64_encode(random_bytes(32));
+    $key = 'base64:'.base64_encode(random_bytes(32));
     putenv("APP_KEY={$key}");
-    $_ENV['APP_KEY']    = $key;
+    $_ENV['APP_KEY'] = $key;
     $_SERVER['APP_KEY'] = $key;
 }

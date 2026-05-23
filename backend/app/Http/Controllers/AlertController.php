@@ -37,32 +37,32 @@ class AlertController extends Controller
             : collect();
 
         $alerts = $rows->map(fn ($a) => [
-            'id'                 => $a->id,
-            'primary_norad_id'   => $a->primary_norad_id,
-            'primary_name'       => $a->primary_name,
+            'id' => $a->id,
+            'primary_norad_id' => $a->primary_norad_id,
+            'primary_name' => $a->primary_name,
             'secondary_norad_id' => $a->secondary_norad_id,
-            'secondary_name'     => $a->secondary_name,
-            'tca'                => $a->tca->toIso8601String(),
-            'hours_until_tca'    => round($a->hoursUntilTca(), 1),
-            'miss_distance_km'   => $a->miss_distance_km,
-            'probability'        => $a->probability,
-            'risk_score'         => $a->risk_score,
-            'risk_level'         => $a->riskLevel(),
-            'source'             => $a->source ?? 'sgp4',
+            'secondary_name' => $a->secondary_name,
+            'tca' => $a->tca->toIso8601String(),
+            'hours_until_tca' => round($a->hoursUntilTca(), 1),
+            'miss_distance_km' => $a->miss_distance_km,
+            'probability' => $a->probability,
+            'risk_score' => $a->risk_score,
+            'risk_level' => $a->riskLevel(),
+            'source' => $a->source ?? 'sgp4',
         ]);
 
-        $hasCdm      = $rows->contains(fn ($a) => $a->source === 'space_track_cdm');
+        $hasCdm = $rows->contains(fn ($a) => $a->source === 'space_track_cdm');
         $lastUpdated = $rows->max('updated_at');
 
         return response()->json([
             'success' => true,
-            'meta'    => [
-                'source'            => $rows->isEmpty() ? null : ($hasCdm ? 'space_track_cdm' : 'sgp4'),
+            'meta' => [
+                'source' => $rows->isEmpty() ? null : ($hasCdm ? 'space_track_cdm' : 'sgp4'),
                 'source_configured' => $sourceConfigured,
-                'last_updated'      => $lastUpdated?->toIso8601String(),
-                'coverage'          => 'High-risk events · 5-day horizon',
+                'last_updated' => $lastUpdated?->toIso8601String(),
+                'coverage' => 'High-risk events · 5-day horizon',
             ],
-            'data'    => $alerts,
+            'data' => $alerts,
         ]);
     }
 }

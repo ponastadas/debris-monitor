@@ -19,16 +19,16 @@ function fakeCdmRecord(array $overrides = []): array
     $counter++;
 
     return array_merge([
-        'CDM_ID'               => (string) $counter,
-        'CREATED'              => now()->subHours(6)->format('Y-m-d H:i:s'),
+        'CDM_ID' => (string) $counter,
+        'CREATED' => now()->subHours(6)->format('Y-m-d H:i:s'),
         'EMERGENCY_REPORTABLE' => 'N',
-        'TCA'                  => now()->addDays(2)->format('Y-m-d H:i:s'),
-        'MIN_RNG'              => '1.234',
-        'PC'                   => '1.23456e-05',
-        'SAT_1_NAME'           => 'ISS (ZARYA)',
-        'SAT_1_ID'             => '25544',
-        'SAT_2_NAME'           => 'FENGYUN 1C DEB',
-        'SAT_2_ID'             => '29228',
+        'TCA' => now()->addDays(2)->format('Y-m-d H:i:s'),
+        'MIN_RNG' => '1.234',
+        'PC' => '1.23456e-05',
+        'SAT_1_NAME' => 'ISS (ZARYA)',
+        'SAT_1_ID' => '25544',
+        'SAT_2_NAME' => 'FENGYUN 1C DEB',
+        'SAT_2_ID' => '29228',
     ], $overrides);
 }
 
@@ -271,9 +271,9 @@ it('GET /api/conjunctions respects secondary satellite perspective', function ()
     // Event: ISS (sat1) ↔ Fengyun DEB (sat2)
     ConjunctionEvent::factory()->create([
         'sat1_norad_id' => '25544',
-        'sat1_name'     => 'ISS (ZARYA)',
+        'sat1_name' => 'ISS (ZARYA)',
         'sat2_norad_id' => '29228',
-        'sat2_name'     => 'FENGYUN 1C DEB',
+        'sat2_name' => 'FENGYUN 1C DEB',
     ]);
 
     // When queried from the Fengyun perspective, ISS should appear as secondary.
@@ -296,7 +296,7 @@ it('ConjunctionEvent riskScore is LOW for distant miss', function () {
 
 it('ConjunctionEvent riskLevel matches riskScore', function () {
     $high = ConjunctionEvent::factory()->high()->make();
-    $low  = ConjunctionEvent::factory()->low()->make();
+    $low = ConjunctionEvent::factory()->low()->make();
 
     expect($high->riskLevel())->toBe('HIGH')
         ->and($low->riskLevel())->toBe('LOW');

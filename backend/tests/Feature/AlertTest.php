@@ -48,9 +48,9 @@ it('returns 403 for free-plan users', function () {
     [, $token] = alertUser('free');
 
     $this->withToken($token)
-         ->getJson('/api/alerts')
-         ->assertForbidden()
-         ->assertJsonPath('error.code', 'ALERTS_NOT_AVAILABLE');
+        ->getJson('/api/alerts')
+        ->assertForbidden()
+        ->assertJsonPath('error.code', 'ALERTS_NOT_AVAILABLE');
 });
 
 it('allows starter-plan users to access alerts', function () {
@@ -71,9 +71,9 @@ it('returns empty data when user has no watched satellites', function () {
     [, $token] = alertUser();
 
     $this->withToken($token)
-         ->getJson('/api/alerts')
-         ->assertOk()
-         ->assertJsonPath('data', []);
+        ->getJson('/api/alerts')
+        ->assertOk()
+        ->assertJsonPath('data', []);
 });
 
 it('returns empty data when watched sats have no alerts', function () {
@@ -81,9 +81,9 @@ it('returns empty data when watched sats have no alerts', function () {
     watchedSat($user, '25544');
 
     $this->withToken($token)
-         ->getJson('/api/alerts')
-         ->assertOk()
-         ->assertJsonPath('data', []);
+        ->getJson('/api/alerts')
+        ->assertOk()
+        ->assertJsonPath('data', []);
 });
 
 // ── Alert retrieval ───────────────────────────────────────────────────────────
@@ -193,14 +193,14 @@ it('scopes alerts between users — each user only sees their own', function () 
     WatchedSatellite::create(['user_id' => $user2->id, 'norad_id' => '43013', 'name' => 'GOES-16']);
 
     ConjunctionAlert::create([
-        'primary_norad_id'   => '25544', 'primary_name'       => 'ISS',
-        'secondary_norad_id' => '11111', 'secondary_name'     => 'DEB-A',
-        'tca'                => now()->addDay(), 'miss_distance_km' => 1.5, 'risk_score' => 50,
+        'primary_norad_id' => '25544', 'primary_name' => 'ISS',
+        'secondary_norad_id' => '11111', 'secondary_name' => 'DEB-A',
+        'tca' => now()->addDay(), 'miss_distance_km' => 1.5, 'risk_score' => 50,
     ]);
     ConjunctionAlert::create([
-        'primary_norad_id'   => '43013', 'primary_name'       => 'GOES-16',
-        'secondary_norad_id' => '22222', 'secondary_name'     => 'DEB-B',
-        'tca'                => now()->addDays(2), 'miss_distance_km' => 2.5, 'risk_score' => 30,
+        'primary_norad_id' => '43013', 'primary_name' => 'GOES-16',
+        'secondary_norad_id' => '22222', 'secondary_name' => 'DEB-B',
+        'tca' => now()->addDays(2), 'miss_distance_km' => 2.5, 'risk_score' => 30,
     ]);
 
     $data1 = $this->actingAs($user1)->getJson('/api/alerts')->json('data');
@@ -323,7 +323,7 @@ it('ConjunctionAlert low() state produces low risk score', function () {
 
 it('WatchedSatellite factory creates with correct user association', function () {
     $user = User::factory()->create();
-    $sat  = WatchedSatellite::factory()->iss()->create(['user_id' => $user->id]);
+    $sat = WatchedSatellite::factory()->iss()->create(['user_id' => $user->id]);
 
     expect($sat->user_id)->toBe($user->id)
         ->and($sat->norad_id)->toBe('25544')

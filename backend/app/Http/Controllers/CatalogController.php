@@ -14,16 +14,16 @@ class CatalogController extends Controller
      * Used in both directions: TYPE_MAP for output, REVERSE_TYPE_MAP for ?types= input.
      */
     private const TYPE_MAP = [
-        'satellite'   => 'satellite',
-        'debris'      => 'debris',
+        'satellite' => 'satellite',
+        'debris' => 'debris',
         'rocket_body' => 'rocket',
     ];
 
     // 'unknown' is handled separately — it maps to NULL object_type, not a string value.
     private const REVERSE_TYPE_MAP = [
         'satellite' => 'satellite',
-        'debris'    => 'debris',
-        'rocket'    => 'rocket_body',
+        'debris' => 'debris',
+        'rocket' => 'rocket_body',
     ];
 
     /**
@@ -50,7 +50,7 @@ class CatalogController extends Controller
     {
         // ── ETag — lightweight check before loading catalog rows ──────────────
         $syncedAt = DB::table('tle_records')->where('is_current', true)->max('fetched_at');
-        $etag     = '"'.md5($syncedAt ?? 'empty').'"';
+        $etag = '"'.md5($syncedAt ?? 'empty').'"';
 
         if ($request->header('If-None-Match') === $etag) {
             return response(null, 304)
@@ -100,19 +100,19 @@ class CatalogController extends Controller
 
         $satellites = $rows->map(fn ($r) => [
             'norad_id' => $r->norad_id,
-            'name'     => $r->name,
-            'type'     => self::TYPE_MAP[$r->object_type] ?? 'unknown',
-            'line1'    => $r->line1,
-            'line2'    => $r->line2,
+            'name' => $r->name,
+            'type' => self::TYPE_MAP[$r->object_type] ?? 'unknown',
+            'line1' => $r->line1,
+            'line2' => $r->line2,
         ])->values();
 
         return $this->success([
             'satellites' => $satellites,
-            'count'      => $satellites->count(),
-            'synced_at'  => $syncedAt,
+            'count' => $satellites->count(),
+            'synced_at' => $syncedAt,
         ])->withHeaders([
             'Cache-Control' => 'public, max-age=3600',
-            'ETag'          => $etag,
+            'ETag' => $etag,
         ]);
     }
 }

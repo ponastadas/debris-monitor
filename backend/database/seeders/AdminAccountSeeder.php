@@ -17,8 +17,8 @@ class AdminAccountSeeder extends Seeder
         AdminAccount::firstOrCreate(
             ['email' => 'admin@satview.eu'],
             [
-                'name'      => 'Admin',
-                'password'  => 'admin',
+                'name' => 'Admin',
+                'password' => 'admin',
                 'is_active' => true,
             ]
         );

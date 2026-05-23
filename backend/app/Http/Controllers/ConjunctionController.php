@@ -37,12 +37,12 @@ class ConjunctionController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => [
-                    'norad_id'     => $noradId,
+                'data' => [
+                    'norad_id' => $noradId,
                     'object_count' => $objects->count(),
-                    'computed_at'  => now()->toIso8601String(),
-                    'source'       => 'space_track_cdm',
-                    'objects'      => $objects,
+                    'computed_at' => now()->toIso8601String(),
+                    'source' => 'space_track_cdm',
+                    'objects' => $objects,
                 ],
             ]);
         }
@@ -52,12 +52,12 @@ class ConjunctionController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => [
-                'norad_id'     => $noradId,
+            'data' => [
+                'norad_id' => $noradId,
                 'object_count' => count($objects),
-                'computed_at'  => now()->toIso8601String(),
-                'source'       => 'simulated',
-                'objects'      => $objects,
+                'computed_at' => now()->toIso8601String(),
+                'source' => 'simulated',
+                'objects' => $objects,
             ],
         ]);
     }
@@ -80,14 +80,14 @@ class ConjunctionController extends Controller
         $riskScore = $event->riskScore();
 
         return [
-            'object_id'          => 'CDM-' . $event->cdm_id,
+            'object_id' => 'CDM-'.$event->cdm_id,
             'secondary_norad_id' => $secondaryNoradId,
-            'miss_km'            => $event->min_range_km,
-            'probability'        => $event->probability,
-            'risk_score'         => $riskScore,
-            'risk_level'         => $riskScore >= 70 ? 'HIGH' : ($riskScore >= 40 ? 'MEDIUM' : 'LOW'),
-            'tca'                => $event->tca->toDateString(),
-            'altitude_km'        => null,   // not provided in CDM; frontend handles null gracefully
+            'miss_km' => $event->min_range_km,
+            'probability' => $event->probability,
+            'risk_score' => $riskScore,
+            'risk_level' => $riskScore >= 70 ? 'HIGH' : ($riskScore >= 40 ? 'MEDIUM' : 'LOW'),
+            'tca' => $event->tca->toDateString(),
+            'altitude_km' => null,   // not provided in CDM; frontend handles null gracefully
         ];
     }
 
@@ -111,24 +111,24 @@ class ConjunctionController extends Controller
     private function generateSimulatedConjunctions(string $noradId): array
     {
         srand((int) $noradId); // deterministic per satellite for consistent demo
-        $pool    = self::SECONDARY_NORAD_IDS;
-        $offset  = (int) $noradId % count($pool);
+        $pool = self::SECONDARY_NORAD_IDS;
+        $offset = (int) $noradId % count($pool);
         $objects = [];
 
         for ($i = 0; $i < 9; $i++) {
-            $missKm    = round(mt_rand(50, 900) + mt_rand(0, 99) / 100, 2);
-            $prob      = round(1 / ($missKm * 0.4) * (mt_rand(1, 100) / 10000), 7);
+            $missKm = round(mt_rand(50, 900) + mt_rand(0, 99) / 100, 2);
+            $prob = round(1 / ($missKm * 0.4) * (mt_rand(1, 100) / 10000), 7);
             $riskScore = min(95, (int) round(100 / ($missKm * 0.08 + 1)));
 
             $objects[] = [
-                'object_id'          => 'DEB-'.strtoupper(substr(md5($noradId.$i), 0, 5)),
+                'object_id' => 'DEB-'.strtoupper(substr(md5($noradId.$i), 0, 5)),
                 'secondary_norad_id' => $pool[($offset + $i) % count($pool)],
-                'miss_km'            => $missKm,
-                'probability'        => $prob,
-                'risk_score'         => $riskScore,
-                'risk_level'         => $riskScore > 60 ? 'HIGH' : ($riskScore > 30 ? 'MEDIUM' : 'LOW'),
-                'tca'                => now()->addDays(mt_rand(0, 5))->toDateString(),
-                'altitude_km'        => mt_rand(300, 800),
+                'miss_km' => $missKm,
+                'probability' => $prob,
+                'risk_score' => $riskScore,
+                'risk_level' => $riskScore > 60 ? 'HIGH' : ($riskScore > 30 ? 'MEDIUM' : 'LOW'),
+                'tca' => now()->addDays(mt_rand(0, 5))->toDateString(),
+                'altitude_km' => mt_rand(300, 800),
             ];
         }
 

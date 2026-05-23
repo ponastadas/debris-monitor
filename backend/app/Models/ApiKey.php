@@ -25,10 +25,10 @@ class ApiKey extends Model
     public static function tierDefaults(string $tier = 'free'): array
     {
         return match ($tier) {
-            'starter'    => ['daily_limit' => 10000,   'webhooks_enabled' => true,  'satellite_limit' => null],
-            'pro'        => ['daily_limit' => 100000,  'webhooks_enabled' => true,  'satellite_limit' => null],
+            'starter' => ['daily_limit' => 10000,   'webhooks_enabled' => true,  'satellite_limit' => null],
+            'pro' => ['daily_limit' => 100000,  'webhooks_enabled' => true,  'satellite_limit' => null],
             'enterprise' => ['daily_limit' => null,    'webhooks_enabled' => true,  'satellite_limit' => null],
-            default      => ['daily_limit' => 100,     'webhooks_enabled' => false, 'satellite_limit' => 5],
+            default => ['daily_limit' => 100,     'webhooks_enabled' => false, 'satellite_limit' => 5],
         };
     }
 
@@ -51,8 +51,8 @@ class ApiKey extends Model
     {
         return [
             'webhooks_enabled' => 'boolean',
-            'last_used_at'     => 'datetime',
-            'expires_at'       => 'datetime',
+            'last_used_at' => 'datetime',
+            'expires_at' => 'datetime',
         ];
     }
 }

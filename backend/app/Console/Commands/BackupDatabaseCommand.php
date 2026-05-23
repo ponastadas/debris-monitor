@@ -19,15 +19,15 @@ class BackupDatabaseCommand extends Command
             mkdir($dir, 0755, true);
         }
 
-        $cfg      = config('database.connections.mysql');
-        $filename = 'db_backup_' . now()->format('Y-m-d_H-i-s') . '.sql.gz';
-        $path     = $dir . '/' . $filename;
+        $cfg = config('database.connections.mysql');
+        $filename = 'db_backup_'.now()->format('Y-m-d_H-i-s').'.sql.gz';
+        $path = $dir.'/'.$filename;
 
         // Two-step: dump then compress, so each has its own exit code.
         // --skip-ssl: MySQL 8.0 generates self-signed certs that MariaDB client rejects.
         // Stderr goes to a separate file so we can show the real error on failure.
-        $tmpPath = $path . '.tmp';
-        $errPath = $path . '.err';
+        $tmpPath = $path.'.tmp';
+        $errPath = $path.'.err';
 
         $dumpCmd = sprintf(
             'mysqldump --skip-ssl -h %s -P %s -u %s --password=%s %s > %s 2> %s',
@@ -46,17 +46,19 @@ class BackupDatabaseCommand extends Command
         @unlink($errPath);
 
         if ($dumpExit !== 0 || ! file_exists($tmpPath) || filesize($tmpPath) === 0) {
-            $this->error('Backup failed: ' . ($dumpStderr ?: 'mysqldump exited with code ' . $dumpExit));
+            $this->error('Backup failed: '.($dumpStderr ?: 'mysqldump exited with code '.$dumpExit));
             @unlink($tmpPath);
+
             return self::FAILURE;
         }
 
-        exec('gzip -9 -c ' . escapeshellarg($tmpPath) . ' > ' . escapeshellarg($path) . ' 2>&1', $gzipOutput, $gzipExit);
+        exec('gzip -9 -c '.escapeshellarg($tmpPath).' > '.escapeshellarg($path).' 2>&1', $gzipOutput, $gzipExit);
         unlink($tmpPath);
 
         if ($gzipExit !== 0 || ! file_exists($path) || filesize($path) === 0) {
-            $this->error('Backup failed (compress): ' . implode("\n", $gzipOutput));
+            $this->error('Backup failed (compress): '.implode("\n", $gzipOutput));
             @unlink($path);
+
             return self::FAILURE;
         }
 
@@ -70,14 +72,14 @@ class BackupDatabaseCommand extends Command
 
     private function pruneOldBackups(string $dir, int $keep): void
     {
-        $files = glob($dir . '/db_backup_*.sql.gz') ?: [];
+        $files = glob($dir.'/db_backup_*.sql.gz') ?: [];
         rsort($files); // newest first (lexicographic sort works because of Y-m-d_H-i-s format)
 
         $stale = array_slice($files, $keep);
 
         foreach ($stale as $file) {
             unlink($file);
-            $this->line('Pruned: ' . basename($file));
+            $this->line('Pruned: '.basename($file));
         }
     }
 }

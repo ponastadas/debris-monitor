@@ -9,7 +9,7 @@ use App\Models\User;
 
 function authUser(?array $attributes = []): array
 {
-    $user  = User::factory()->create($attributes);
+    $user = User::factory()->create($attributes);
     $token = $user->createToken('test')->plainTextToken;
 
     return [$user, $token];
@@ -21,19 +21,19 @@ it('returns free plan for a user with no subscription', function () {
     [$user, $token] = authUser();
 
     $this->withToken($token)
-         ->getJson('/api/billing/plan')
-         ->assertOk()
-         ->assertJsonPath('data.plan', 'free')
-         ->assertJsonPath('data.plan_label', 'Free')
-         ->assertJsonPath('data.status', 'none');
+        ->getJson('/api/billing/plan')
+        ->assertOk()
+        ->assertJsonPath('data.plan', 'free')
+        ->assertJsonPath('data.plan_label', 'Free')
+        ->assertJsonPath('data.status', 'none');
 });
 
 it('current plan response includes entitlements and available_plans', function () {
     [$user, $token] = authUser();
 
     $res = $this->withToken($token)
-                ->getJson('/api/billing/plan')
-                ->assertOk();
+        ->getJson('/api/billing/plan')
+        ->assertOk();
 
     $data = $res->json('data');
 
@@ -47,11 +47,11 @@ it('current plan reflects an active subscription', function () {
     Subscription::factory()->create(['user_id' => $user->id, 'plan' => 'pro', 'status' => 'active']);
 
     $this->withToken($token)
-         ->getJson('/api/billing/plan')
-         ->assertOk()
-         ->assertJsonPath('data.plan', 'pro')
-         ->assertJsonPath('data.plan_label', 'Pro')
-         ->assertJsonPath('data.status', 'active');
+        ->getJson('/api/billing/plan')
+        ->assertOk()
+        ->assertJsonPath('data.plan', 'pro')
+        ->assertJsonPath('data.plan_label', 'Pro')
+        ->assertJsonPath('data.status', 'active');
 });
 
 // ── Subscribe ─────────────────────────────────────────────────────────────────
@@ -60,10 +60,10 @@ it('subscribe creates an active subscription and records a payment', function ()
     [$user, $token] = authUser();
 
     $this->withToken($token)
-         ->postJson('/api/billing/subscribe', ['plan' => 'starter'])
-         ->assertOk()
-         ->assertJsonPath('data.plan', 'starter')
-         ->assertJsonPath('data.status', 'active');
+        ->postJson('/api/billing/subscribe', ['plan' => 'starter'])
+        ->assertOk()
+        ->assertJsonPath('data.plan', 'starter')
+        ->assertJsonPath('data.status', 'active');
 
     expect(Subscription::where('user_id', $user->id)->where('plan', 'starter')->exists())->toBeTrue()
         ->and(Payment::where('user_id', $user->id)->where('amount', 2900)->exists())->toBeTrue();
@@ -73,8 +73,8 @@ it('subscribe response includes entitlements for the new plan', function () {
     [$user, $token] = authUser();
 
     $res = $this->withToken($token)
-                ->postJson('/api/billing/subscribe', ['plan' => 'starter'])
-                ->assertOk();
+        ->postJson('/api/billing/subscribe', ['plan' => 'starter'])
+        ->assertOk();
 
     expect($res->json('data.entitlements.requests_per_day'))->toBe(10_000)
         ->and($res->json('data.entitlements.can_receive_alerts'))->toBeTrue();
@@ -85,9 +85,9 @@ it('subscribe upgrades an existing subscription', function () {
     Subscription::factory()->create(['user_id' => $user->id, 'plan' => 'starter', 'status' => 'active']);
 
     $this->withToken($token)
-         ->postJson('/api/billing/subscribe', ['plan' => 'pro'])
-         ->assertOk()
-         ->assertJsonPath('data.plan', 'pro');
+        ->postJson('/api/billing/subscribe', ['plan' => 'pro'])
+        ->assertOk()
+        ->assertJsonPath('data.plan', 'pro');
 
     // Should still be a single subscription row (updateOrCreate)
     expect(Subscription::where('user_id', $user->id)->count())->toBe(1);
@@ -98,8 +98,8 @@ it('subscribe syncs api key tier to the new plan', function () {
     $key = ApiKey::factory()->create(['user_id' => $user->id, 'tier' => 'free', 'daily_limit' => 100]);
 
     $this->withToken($token)
-         ->postJson('/api/billing/subscribe', ['plan' => 'starter'])
-         ->assertOk();
+        ->postJson('/api/billing/subscribe', ['plan' => 'starter'])
+        ->assertOk();
 
     expect($key->fresh()->tier)->toBe('starter')
         ->and($key->fresh()->daily_limit)->toBe(10000);
@@ -109,16 +109,16 @@ it('subscribe rejects an invalid plan name', function () {
     [$user, $token] = authUser();
 
     $this->withToken($token)
-         ->postJson('/api/billing/subscribe', ['plan' => 'ultra'])
-         ->assertUnprocessable();
+        ->postJson('/api/billing/subscribe', ['plan' => 'ultra'])
+        ->assertUnprocessable();
 });
 
 it('subscribe rejects the free plan (not a paid plan)', function () {
     [$user, $token] = authUser();
 
     $this->withToken($token)
-         ->postJson('/api/billing/subscribe', ['plan' => 'free'])
-         ->assertUnprocessable();
+        ->postJson('/api/billing/subscribe', ['plan' => 'free'])
+        ->assertUnprocessable();
 });
 
 // ── Cancel ────────────────────────────────────────────────────────────────────
@@ -129,8 +129,8 @@ it('cancel sets status to canceled and downgrades api keys', function () {
     $key = ApiKey::factory()->create(['user_id' => $user->id, 'tier' => 'pro', 'daily_limit' => 100000]);
 
     $this->withToken($token)
-         ->postJson('/api/billing/cancel')
-         ->assertOk();
+        ->postJson('/api/billing/cancel')
+        ->assertOk();
 
     $sub = Subscription::where('user_id', $user->id)->first();
     expect($sub->status)->toBe('canceled')
@@ -143,9 +143,9 @@ it('cancel returns error when there is no active subscription', function () {
     [$user, $token] = authUser();
 
     $this->withToken($token)
-         ->postJson('/api/billing/cancel')
-         ->assertUnprocessable()
-         ->assertJsonPath('error.code', 'NO_ACTIVE_SUBSCRIPTION');
+        ->postJson('/api/billing/cancel')
+        ->assertUnprocessable()
+        ->assertJsonPath('error.code', 'NO_ACTIVE_SUBSCRIPTION');
 });
 
 it('cancel returns error when subscription is already canceled', function () {
@@ -153,8 +153,8 @@ it('cancel returns error when subscription is already canceled', function () {
     Subscription::factory()->canceled()->create(['user_id' => $user->id]);
 
     $this->withToken($token)
-         ->postJson('/api/billing/cancel')
-         ->assertUnprocessable();
+        ->postJson('/api/billing/cancel')
+        ->assertUnprocessable();
 });
 
 // ── Payment history ───────────────────────────────────────────────────────────
@@ -163,9 +163,9 @@ it('payment history returns an empty list when no payments exist', function () {
     [$user, $token] = authUser();
 
     $this->withToken($token)
-         ->getJson('/api/billing/history')
-         ->assertOk()
-         ->assertJsonPath('data', []);
+        ->getJson('/api/billing/history')
+        ->assertOk()
+        ->assertJsonPath('data', []);
 });
 
 it('payment history returns payments in reverse chronological order', function () {
@@ -175,8 +175,8 @@ it('payment history returns payments in reverse chronological order', function (
     Payment::factory()->create(['user_id' => $user->id, 'amount' => 9900, 'description' => 'Pro',     'created_at' => now()->subDay()]);
 
     $res = $this->withToken($token)
-                ->getJson('/api/billing/history')
-                ->assertOk();
+        ->getJson('/api/billing/history')
+        ->assertOk();
 
     $payments = $res->json('data');
 
@@ -190,20 +190,20 @@ it('payment history response includes formatted amount', function () {
     Payment::factory()->create(['user_id' => $user->id, 'amount' => 2900]);
 
     $res = $this->withToken($token)
-                ->getJson('/api/billing/history')
-                ->assertOk();
+        ->getJson('/api/billing/history')
+        ->assertOk();
 
     expect($res->json('data.0.formatted'))->toBe('$29.00');
 });
 
 it('payment history is scoped to the authenticated user', function () {
-    [$user,  $token]  = authUser();
+    [$user,  $token] = authUser();
     [$other, $token2] = authUser();
     Payment::factory()->create(['user_id' => $other->id, 'amount' => 9900]);
 
     $res = $this->withToken($token)
-                ->getJson('/api/billing/history')
-                ->assertOk();
+        ->getJson('/api/billing/history')
+        ->assertOk();
 
     expect($res->json('data'))->toHaveCount(0);
 });

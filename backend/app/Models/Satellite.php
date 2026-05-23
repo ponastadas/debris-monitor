@@ -46,10 +46,10 @@ class Satellite extends Model
         $this->tleRecords()->where('is_current', true)->update(['is_current' => false]);
 
         return $this->tleRecords()->create([
-            'line1'      => $line1,
-            'line2'      => $line2,
-            'epoch_at'   => $this->parseEpochFromLine1($line1),
-            'source'     => $source,
+            'line1' => $line1,
+            'line2' => $line2,
+            'epoch_at' => $this->parseEpochFromLine1($line1),
+            'source' => $source,
             'fetched_at' => $now,
             'is_current' => true,
         ]);
@@ -63,9 +63,9 @@ class Satellite extends Model
             if (! $epochStr || strlen($epochStr) < 3) {
                 return null;
             }
-            $year2   = (int) substr($epochStr, 0, 2);
+            $year2 = (int) substr($epochStr, 0, 2);
             $dayFrac = (float) substr($epochStr, 2);
-            $year    = $year2 >= 57 ? 1900 + $year2 : 2000 + $year2;
+            $year = $year2 >= 57 ? 1900 + $year2 : 2000 + $year2;
 
             return Carbon::create($year, 1, 1, 0, 0, 0, 'UTC')
                 ->addDays($dayFrac - 1)
@@ -78,10 +78,10 @@ class Satellite extends Model
     protected function casts(): array
     {
         return [
-            'launch_date'  => 'date',
-            'decay_date'   => 'date',
+            'launch_date' => 'date',
+            'decay_date' => 'date',
             'last_seen_at' => 'datetime',
-            'is_active'    => 'boolean',
+            'is_active' => 'boolean',
         ];
     }
 }

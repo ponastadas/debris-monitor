@@ -17,11 +17,11 @@ class SatelliteController extends Controller
         }
 
         return $this->success([
-            'norad_id'   => $noradId,
-            'name'       => $tle['name'],
-            'tle_line1'  => $tle['line1'],
-            'tle_line2'  => $tle['line2'],
-            'source'     => $tle['source'],
+            'norad_id' => $noradId,
+            'name' => $tle['name'],
+            'tle_line1' => $tle['line1'],
+            'tle_line2' => $tle['line2'],
+            'source' => $tle['source'],
             'fetched_at' => $tle['fetched_at'],
         ]);
     }
@@ -35,7 +35,7 @@ class SatelliteController extends Controller
         }
 
         return $this->success([
-            'norad_id'  => $noradId,
+            'norad_id' => $noradId,
             'tle_line1' => $tle['line1'],
             'tle_line2' => $tle['line2'],
         ]);
@@ -52,10 +52,10 @@ class SatelliteController extends Controller
         $record = $satellite->currentTle;
 
         return [
-            'name'       => $satellite->name,
-            'line1'      => $record->line1,
-            'line2'      => $record->line2,
-            'source'     => 'local',
+            'name' => $satellite->name,
+            'line1' => $record->line1,
+            'line2' => $record->line2,
+            'source' => 'local',
             'fetched_at' => $record->fetched_at->toIso8601String(),
         ];
     }
@@ -84,10 +84,10 @@ class SatelliteController extends Controller
             return null;
         }
 
-        $name  = $lines[0];
+        $name = $lines[0];
         $line1 = $lines[1];
         $line2 = $lines[2];
-        $now   = now();
+        $now = now();
 
         $satellite = Satellite::updateOrCreate(
             ['norad_id' => $noradId],
@@ -97,10 +97,10 @@ class SatelliteController extends Controller
         $satellite->upsertCurrentTle($line1, $line2);
 
         return [
-            'name'       => $name,
-            'line1'      => $line1,
-            'line2'      => $line2,
-            'source'     => 'celestrak',
+            'name' => $name,
+            'line1' => $line1,
+            'line2' => $line2,
+            'source' => 'celestrak',
             'fetched_at' => $now->toIso8601String(),
         ];
     }

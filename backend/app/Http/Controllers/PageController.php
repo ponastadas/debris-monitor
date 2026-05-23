@@ -18,9 +18,9 @@ class PageController extends Controller
             ->orderBy('title')
             ->get()
             ->map(fn (Page $p) => [
-                'title'    => $p->title,
-                'slug'     => $p->slug,
-                'excerpt'  => $p->excerpt,
+                'title' => $p->title,
+                'slug' => $p->slug,
+                'excerpt' => $p->excerpt,
             ]);
 
         return $this->success($pages);
@@ -32,14 +32,14 @@ class PageController extends Controller
         $page = Page::published()->where('slug', $slug)->firstOrFail();
 
         return $this->success([
-            'title'            => $page->title,
-            'slug'             => $page->slug,
-            'excerpt'          => $page->excerpt,
-            'content'          => $page->content,
-            'meta_title'       => $page->meta_title,
+            'title' => $page->title,
+            'slug' => $page->slug,
+            'excerpt' => $page->excerpt,
+            'content' => $page->content,
+            'meta_title' => $page->meta_title,
             'meta_description' => $page->meta_description,
-            'published_at'     => $page->published_at?->toIso8601String(),
-            'updated_at'       => $page->updated_at->toIso8601String(),
+            'published_at' => $page->published_at?->toIso8601String(),
+            'updated_at' => $page->updated_at->toIso8601String(),
         ]);
     }
 }

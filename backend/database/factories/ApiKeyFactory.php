@@ -16,13 +16,13 @@ class ApiKeyFactory extends Factory
     public function definition(): array
     {
         return [
-            'user_id'          => User::factory(),
-            'name'             => 'Test Key',
-            'key'              => ApiKey::generate(),
-            'tier'             => 'free',
-            'daily_limit'      => 100,
+            'user_id' => User::factory(),
+            'name' => 'Test Key',
+            'key' => ApiKey::generate(),
+            'tier' => 'free',
+            'daily_limit' => 100,
             'webhooks_enabled' => false,
-            'satellite_limit'  => 5,
+            'satellite_limit' => 5,
         ];
     }
 }

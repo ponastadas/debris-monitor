@@ -3,6 +3,7 @@
 use App\Models\AdminAccount;
 use App\Models\AdminAuditLog;
 use App\Models\Page;
+use App\Models\User;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -19,10 +20,10 @@ function adminToken(): array
 function publishedPage(array $attrs = []): Page
 {
     return Page::create(array_merge([
-        'title'      => 'Test Page',
-        'slug'       => 'test-page',
-        'content'    => '# Hello',
-        'status'     => 'published',
+        'title' => 'Test Page',
+        'slug' => 'test-page',
+        'content' => '# Hello',
+        'status' => 'published',
         'published_at' => now(),
     ], $attrs));
 }
@@ -31,10 +32,10 @@ function publishedPage(array $attrs = []): Page
 function draftPage(array $attrs = []): Page
 {
     return Page::create(array_merge([
-        'title'   => 'Draft Page',
-        'slug'    => 'draft-page',
+        'title' => 'Draft Page',
+        'slug' => 'draft-page',
         'content' => '# Draft',
-        'status'  => 'draft',
+        'status' => 'draft',
     ], $attrs));
 }
 
@@ -91,21 +92,21 @@ it('public index returns pages sorted alphabetically by title', function () {
 
 it('public show returns a published page with content', function () {
     publishedPage([
-        'slug'             => 'privacy-policy',
-        'title'            => 'Privacy Policy',
-        'excerpt'          => 'Our privacy policy.',
-        'content'          => '# Privacy\nWe respect your data.',
-        'meta_title'       => 'Privacy | SatView',
+        'slug' => 'privacy-policy',
+        'title' => 'Privacy Policy',
+        'excerpt' => 'Our privacy policy.',
+        'content' => '# Privacy\nWe respect your data.',
+        'meta_title' => 'Privacy | SatView',
         'meta_description' => 'Our privacy policy description.',
     ]);
 
     $this->getJson('/api/pages/privacy-policy')
-         ->assertOk()
-         ->assertJsonPath('data.title', 'Privacy Policy')
-         ->assertJsonPath('data.slug', 'privacy-policy')
-         ->assertJsonPath('data.excerpt', 'Our privacy policy.')
-         ->assertJsonPath('data.meta_title', 'Privacy | SatView')
-         ->assertJsonPath('data.meta_description', 'Our privacy policy description.');
+        ->assertOk()
+        ->assertJsonPath('data.title', 'Privacy Policy')
+        ->assertJsonPath('data.slug', 'privacy-policy')
+        ->assertJsonPath('data.excerpt', 'Our privacy policy.')
+        ->assertJsonPath('data.meta_title', 'Privacy | SatView')
+        ->assertJsonPath('data.meta_description', 'Our privacy policy description.');
 
     $content = $this->getJson('/api/pages/privacy-policy')->json('data.content');
     expect($content)->toContain('Privacy');
@@ -134,30 +135,30 @@ it('admin can create a page with all fields', function () {
     [, $token] = adminToken();
 
     $this->withToken($token)
-         ->postJson('/api/admin/pages', [
-             'title'            => 'New Page',
-             'slug'             => 'new-page',
-             'excerpt'          => 'A short description.',
-             'content'          => '# New Page\nContent here.',
-             'meta_title'       => 'New Page | SatView',
-             'meta_description' => 'SEO description.',
-         ])
-         ->assertStatus(201)
-         ->assertJsonPath('data.title', 'New Page')
-         ->assertJsonPath('data.slug', 'new-page')
-         ->assertJsonPath('data.status', 'draft'); // default status
+        ->postJson('/api/admin/pages', [
+            'title' => 'New Page',
+            'slug' => 'new-page',
+            'excerpt' => 'A short description.',
+            'content' => '# New Page\nContent here.',
+            'meta_title' => 'New Page | SatView',
+            'meta_description' => 'SEO description.',
+        ])
+        ->assertStatus(201)
+        ->assertJsonPath('data.title', 'New Page')
+        ->assertJsonPath('data.slug', 'new-page')
+        ->assertJsonPath('data.status', 'draft'); // default status
 });
 
 it('admin create auto-generates slug from title when slug is omitted', function () {
     [, $token] = adminToken();
 
     $this->withToken($token)
-         ->postJson('/api/admin/pages', [
-             'title'   => 'My Awesome Page',
-             'content' => 'Some content.',
-         ])
-         ->assertStatus(201)
-         ->assertJsonPath('data.slug', 'my-awesome-page');
+        ->postJson('/api/admin/pages', [
+            'title' => 'My Awesome Page',
+            'content' => 'Some content.',
+        ])
+        ->assertStatus(201)
+        ->assertJsonPath('data.slug', 'my-awesome-page');
 });
 
 it('admin create resolves slug collision by appending a counter', function () {
@@ -167,28 +168,28 @@ it('admin create resolves slug collision by appending a counter', function () {
 
     // First collision → -2
     $this->withToken($token)
-         ->postJson('/api/admin/pages', ['title' => 'Collision', 'content' => 'y'])
-         ->assertStatus(201)
-         ->assertJsonPath('data.slug', 'collision-2');
+        ->postJson('/api/admin/pages', ['title' => 'Collision', 'content' => 'y'])
+        ->assertStatus(201)
+        ->assertJsonPath('data.slug', 'collision-2');
 
     // Second collision → -3
     $this->withToken($token)
-         ->postJson('/api/admin/pages', ['title' => 'Collision', 'content' => 'z'])
-         ->assertStatus(201)
-         ->assertJsonPath('data.slug', 'collision-3');
+        ->postJson('/api/admin/pages', ['title' => 'Collision', 'content' => 'z'])
+        ->assertStatus(201)
+        ->assertJsonPath('data.slug', 'collision-3');
 });
 
 it('admin create rejects a slug that does not match the allowed pattern', function () {
     [, $token] = adminToken();
 
     $res = $this->withToken($token)
-         ->postJson('/api/admin/pages', [
-             'title'   => 'Bad Slug Test',
-             'slug'    => 'Bad Slug With Spaces!',
-             'content' => 'content',
-         ])
-         ->assertUnprocessable()
-         ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        ->postJson('/api/admin/pages', [
+            'title' => 'Bad Slug Test',
+            'slug' => 'Bad Slug With Spaces!',
+            'content' => 'content',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('error.code', 'VALIDATION_ERROR');
 
     expect($res->json('error.details'))->toHaveKey('slug');
 });
@@ -199,13 +200,13 @@ it('admin create rejects a duplicate explicit slug', function () {
     [, $token] = adminToken();
 
     $res = $this->withToken($token)
-         ->postJson('/api/admin/pages', [
-             'title'   => 'Another Page',
-             'slug'    => 'taken-slug',
-             'content' => 'content',
-         ])
-         ->assertUnprocessable()
-         ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        ->postJson('/api/admin/pages', [
+            'title' => 'Another Page',
+            'slug' => 'taken-slug',
+            'content' => 'content',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('error.code', 'VALIDATION_ERROR');
 
     expect($res->json('error.details'))->toHaveKey('slug');
 });
@@ -214,9 +215,9 @@ it('admin create requires title and content', function () {
     [, $token] = adminToken();
 
     $res = $this->withToken($token)
-         ->postJson('/api/admin/pages', [])
-         ->assertUnprocessable()
-         ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        ->postJson('/api/admin/pages', [])
+        ->assertUnprocessable()
+        ->assertJsonPath('error.code', 'VALIDATION_ERROR');
 
     expect($res->json('error.details'))->toHaveKeys(['title', 'content']);
 });
@@ -225,65 +226,65 @@ it('admin create requires title and content', function () {
 
 it('admin can update page fields', function () {
     [, $token] = adminToken();
-    $page      = draftPage();
+    $page = draftPage();
 
     $this->withToken($token)
-         ->patchJson("/api/admin/pages/{$page->id}", [
-             'title'   => 'Updated Title',
-             'excerpt' => 'Updated excerpt.',
-             'content' => 'Updated content.',
-         ])
-         ->assertOk()
-         ->assertJsonPath('data.title', 'Updated Title')
-         ->assertJsonPath('data.excerpt', 'Updated excerpt.');
+        ->patchJson("/api/admin/pages/{$page->id}", [
+            'title' => 'Updated Title',
+            'excerpt' => 'Updated excerpt.',
+            'content' => 'Updated content.',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.title', 'Updated Title')
+        ->assertJsonPath('data.excerpt', 'Updated excerpt.');
 });
 
 it('admin update auto-generates new slug when title changes and no slug is provided', function () {
     [, $token] = adminToken();
     $page = Page::create([
-        'title'   => 'Original Title',
-        'slug'    => 'original-title',
+        'title' => 'Original Title',
+        'slug' => 'original-title',
         'content' => 'x',
-        'status'  => 'draft',
+        'status' => 'draft',
     ]);
 
     $this->withToken($token)
-         ->patchJson("/api/admin/pages/{$page->id}", ['title' => 'Brand New Title'])
-         ->assertOk()
-         ->assertJsonPath('data.slug', 'brand-new-title');
+        ->patchJson("/api/admin/pages/{$page->id}", ['title' => 'Brand New Title'])
+        ->assertOk()
+        ->assertJsonPath('data.slug', 'brand-new-title');
 });
 
 it('admin update preserves existing slug when only content changes', function () {
     [, $token] = adminToken();
     $page = Page::create([
-        'title'   => 'Keep Slug',
-        'slug'    => 'keep-this-slug',
+        'title' => 'Keep Slug',
+        'slug' => 'keep-this-slug',
         'content' => 'old',
-        'status'  => 'draft',
+        'status' => 'draft',
     ]);
 
     $this->withToken($token)
-         ->patchJson("/api/admin/pages/{$page->id}", ['content' => 'new content'])
-         ->assertOk()
-         ->assertJsonPath('data.slug', 'keep-this-slug');
+        ->patchJson("/api/admin/pages/{$page->id}", ['content' => 'new content'])
+        ->assertOk()
+        ->assertJsonPath('data.slug', 'keep-this-slug');
 });
 
 it('admin update allows keeping the same slug on the same page (no false collision)', function () {
     [, $token] = adminToken();
     $page = Page::create([
-        'title'   => 'Sticky Slug',
-        'slug'    => 'sticky-slug',
+        'title' => 'Sticky Slug',
+        'slug' => 'sticky-slug',
         'content' => 'x',
-        'status'  => 'draft',
+        'status' => 'draft',
     ]);
 
     $this->withToken($token)
-         ->patchJson("/api/admin/pages/{$page->id}", [
-             'title' => 'Sticky Slug',
-             'slug'  => 'sticky-slug',
-         ])
-         ->assertOk()
-         ->assertJsonPath('data.slug', 'sticky-slug');
+        ->patchJson("/api/admin/pages/{$page->id}", [
+            'title' => 'Sticky Slug',
+            'slug' => 'sticky-slug',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.slug', 'sticky-slug');
 });
 
 it('admin update rejects a slug already used by a different page', function () {
@@ -293,9 +294,9 @@ it('admin update rejects a slug already used by a different page', function () {
     [, $token] = adminToken();
 
     $res = $this->withToken($token)
-         ->patchJson("/api/admin/pages/{$page->id}", ['slug' => 'other-slug'])
-         ->assertUnprocessable()
-         ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        ->patchJson("/api/admin/pages/{$page->id}", ['slug' => 'other-slug'])
+        ->assertUnprocessable()
+        ->assertJsonPath('error.code', 'VALIDATION_ERROR');
 
     expect($res->json('error.details'))->toHaveKey('slug');
 });
@@ -304,12 +305,12 @@ it('admin update rejects a slug already used by a different page', function () {
 
 it('admin can publish a draft page', function () {
     [, $token] = adminToken();
-    $page      = draftPage();
+    $page = draftPage();
 
     $this->withToken($token)
-         ->postJson("/api/admin/pages/{$page->id}/publish")
-         ->assertOk()
-         ->assertJsonPath('data.status', 'published');
+        ->postJson("/api/admin/pages/{$page->id}/publish")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'published');
 
     expect($page->fresh()->status)->toBe('published')
         ->and($page->fresh()->published_at)->not->toBeNull();
@@ -317,18 +318,18 @@ it('admin can publish a draft page', function () {
 
 it('publish preserves the original published_at if already set', function () {
     $originalTime = now()->subDays(30);
-    [, $token]    = adminToken();
-    $page         = Page::create([
-        'title'        => 'Old Pub',
-        'slug'         => 'old-pub',
-        'content'      => 'x',
-        'status'       => 'draft',
+    [, $token] = adminToken();
+    $page = Page::create([
+        'title' => 'Old Pub',
+        'slug' => 'old-pub',
+        'content' => 'x',
+        'status' => 'draft',
         'published_at' => $originalTime,
     ]);
 
     $this->withToken($token)
-         ->postJson("/api/admin/pages/{$page->id}/publish")
-         ->assertOk();
+        ->postJson("/api/admin/pages/{$page->id}/publish")
+        ->assertOk();
 
     $refreshed = $page->fresh();
     expect($refreshed->published_at->toDateString())->toBe($originalTime->toDateString());
@@ -336,19 +337,19 @@ it('publish preserves the original published_at if already set', function () {
 
 it('admin can unpublish a published page', function () {
     [, $token] = adminToken();
-    $page      = publishedPage();
+    $page = publishedPage();
 
     $this->withToken($token)
-         ->postJson("/api/admin/pages/{$page->id}/unpublish")
-         ->assertOk()
-         ->assertJsonPath('data.status', 'draft');
+        ->postJson("/api/admin/pages/{$page->id}/unpublish")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'draft');
 
     expect($page->fresh()->status)->toBe('draft');
 });
 
 it('unpublished page is no longer returned by the public endpoint', function () {
     [, $token] = adminToken();
-    $page      = publishedPage(['slug' => 'soon-hidden']);
+    $page = publishedPage(['slug' => 'soon-hidden']);
 
     // Confirm it's publicly visible
     $this->getJson('/api/pages/soon-hidden')->assertOk();
@@ -364,18 +365,18 @@ it('unpublished page is no longer returned by the public endpoint', function () 
 
 it('admin can delete a page', function () {
     [, $token] = adminToken();
-    $page      = draftPage();
+    $page = draftPage();
 
     $this->withToken($token)
-         ->deleteJson("/api/admin/pages/{$page->id}")
-         ->assertOk();
+        ->deleteJson("/api/admin/pages/{$page->id}")
+        ->assertOk();
 
     expect(Page::find($page->id))->toBeNull();
 });
 
 it('deleted page is no longer returned publicly', function () {
     [, $token] = adminToken();
-    $page      = publishedPage(['slug' => 'about-to-vanish']);
+    $page = publishedPage(['slug' => 'about-to-vanish']);
 
     $this->getJson('/api/pages/about-to-vanish')->assertOk();
 
@@ -418,34 +419,34 @@ it('unauthenticated request to admin pages list returns 401', function () {
 
 it('unauthenticated create is rejected', function () {
     $this->postJson('/api/admin/pages', ['title' => 'x', 'content' => 'y'])
-         ->assertUnauthorized();
+        ->assertUnauthorized();
 });
 
 it('unauthenticated update is rejected', function () {
     $page = draftPage();
     $this->patchJson("/api/admin/pages/{$page->id}", ['title' => 'x'])
-         ->assertUnauthorized();
+        ->assertUnauthorized();
 });
 
 it('unauthenticated delete is rejected', function () {
     $page = draftPage();
     $this->deleteJson("/api/admin/pages/{$page->id}")
-         ->assertUnauthorized();
+        ->assertUnauthorized();
 });
 
 it('unauthenticated publish is rejected', function () {
     $page = draftPage();
     $this->postJson("/api/admin/pages/{$page->id}/publish")
-         ->assertUnauthorized();
+        ->assertUnauthorized();
 });
 
 it('customer bearer token cannot access admin page endpoints', function () {
-    $user  = \App\Models\User::factory()->create();
+    $user = User::factory()->create();
     $token = $user->createToken('customer')->plainTextToken;
 
     $this->withToken($token)
-         ->getJson('/api/admin/pages')
-         ->assertUnauthorized();
+        ->getJson('/api/admin/pages')
+        ->assertUnauthorized();
 });
 
 // ── Audit logging ─────────────────────────────────────────────────────────────
@@ -454,11 +455,11 @@ it('records page.created when admin creates a page', function () {
     [$admin, $token] = adminToken();
 
     $this->withToken($token)
-         ->postJson('/api/admin/pages', [
-             'title'   => 'Audit Create Test',
-             'content' => 'content',
-         ])
-         ->assertStatus(201);
+        ->postJson('/api/admin/pages', [
+            'title' => 'Audit Create Test',
+            'content' => 'content',
+        ])
+        ->assertStatus(201);
 
     $log = AdminAuditLog::forAction(AdminAuditLog::PAGE_CREATED)
         ->forActor($admin->id)
@@ -474,8 +475,8 @@ it('records page.updated when admin updates a page', function () {
     $page = draftPage();
 
     $this->withToken($token)
-         ->patchJson("/api/admin/pages/{$page->id}", ['title' => 'Audited Update'])
-         ->assertOk();
+        ->patchJson("/api/admin/pages/{$page->id}", ['title' => 'Audited Update'])
+        ->assertOk();
 
     $log = AdminAuditLog::forAction(AdminAuditLog::PAGE_UPDATED)
         ->forActor($admin->id)
@@ -492,8 +493,8 @@ it('records page.published when admin publishes a page', function () {
     $page = draftPage();
 
     $this->withToken($token)
-         ->postJson("/api/admin/pages/{$page->id}/publish")
-         ->assertOk();
+        ->postJson("/api/admin/pages/{$page->id}/publish")
+        ->assertOk();
 
     $log = AdminAuditLog::forAction(AdminAuditLog::PAGE_PUBLISHED)
         ->forActor($admin->id)
@@ -509,8 +510,8 @@ it('records page.unpublished when admin unpublishes a page', function () {
     $page = publishedPage();
 
     $this->withToken($token)
-         ->postJson("/api/admin/pages/{$page->id}/unpublish")
-         ->assertOk();
+        ->postJson("/api/admin/pages/{$page->id}/unpublish")
+        ->assertOk();
 
     $log = AdminAuditLog::forAction(AdminAuditLog::PAGE_UNPUBLISHED)
         ->forActor($admin->id)
@@ -525,8 +526,8 @@ it('records page.deleted when admin deletes a page', function () {
     $page = draftPage(['title' => 'To Be Deleted', 'slug' => 'to-be-deleted']);
 
     $this->withToken($token)
-         ->deleteJson("/api/admin/pages/{$page->id}")
-         ->assertOk();
+        ->deleteJson("/api/admin/pages/{$page->id}")
+        ->assertOk();
 
     $log = AdminAuditLog::forAction(AdminAuditLog::PAGE_DELETED)
         ->forActor($admin->id)
@@ -540,12 +541,12 @@ it('records page.deleted when admin deletes a page', function () {
 
 it('audit log captures page title and slug on deletion even after the record is gone', function () {
     [$admin, $token] = adminToken();
-    $page   = draftPage(['title' => 'Ephemeral', 'slug' => 'ephemeral']);
+    $page = draftPage(['title' => 'Ephemeral', 'slug' => 'ephemeral']);
     $pageId = $page->id;
 
     $this->withToken($token)
-         ->deleteJson("/api/admin/pages/{$pageId}")
-         ->assertOk();
+        ->deleteJson("/api/admin/pages/{$pageId}")
+        ->assertOk();
 
     // The page row is gone
     expect(Page::find($pageId))->toBeNull();

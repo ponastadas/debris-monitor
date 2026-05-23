@@ -19,6 +19,7 @@ class ConjunctionAlert extends Model
 {
     /** @use HasFactory<ConjunctionAlertFactory> */
     use HasFactory;
+
     /** Alerts whose TCA is within the next $days days. */
     public function scopeUpcoming(Builder $query, int $days = 5): Builder
     {
@@ -39,7 +40,7 @@ class ConjunctionAlert extends Model
         return match (true) {
             $this->risk_score >= 70 => 'HIGH',
             $this->risk_score >= 40 => 'MEDIUM',
-            default                 => 'LOW',
+            default => 'LOW',
         };
     }
 
@@ -52,9 +53,9 @@ class ConjunctionAlert extends Model
     protected function casts(): array
     {
         return [
-            'tca'          => 'datetime',
-            'notified_at'  => 'datetime',
-            'probability'  => 'float',
+            'tca' => 'datetime',
+            'notified_at' => 'datetime',
+            'probability' => 'float',
         ];
     }
 }

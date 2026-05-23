@@ -42,8 +42,8 @@ class GuestUsage extends Model
     {
         static::insertOrIgnore([
             'identifier' => $identifier,
-            'date'       => today()->toDateString(),
-            'count'      => 0,
+            'date' => today()->toDateString(),
+            'count' => 0,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

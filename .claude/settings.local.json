@@ -116,7 +116,9 @@
       "Bash(terraform apply *)",
       "Bash(dig +short *)",
       "Bash(docker push *)",
-      "Bash(docker build *)"
+      "Bash(docker build *)",
+      "Bash(gh run *)",
+      "Bash(gh api *)"
     ]
   }
 }

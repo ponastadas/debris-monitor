@@ -32,7 +32,7 @@ class AuthenticateApiKey
 
         if ($apiKey->daily_limit !== null && $used >= $apiKey->daily_limit) {
             return response()->json([
-                'error'       => 'Daily rate limit exceeded',
+                'error' => 'Daily rate limit exceeded',
                 'upgrade_url' => url('/billing'),
             ], 429);
         }
@@ -45,12 +45,12 @@ class AuthenticateApiKey
         $ms = (int) round((microtime(true) - $start) * 1000);
 
         ApiUsage::create([
-            'api_key_id'  => $apiKey->id,
-            'endpoint'    => $request->path(),
-            'method'      => $request->method(),
+            'api_key_id' => $apiKey->id,
+            'endpoint' => $request->path(),
+            'method' => $request->method(),
             'status_code' => $response->getStatusCode(),
             'response_ms' => $ms,
-            'ip'          => $request->ip(),
+            'ip' => $request->ip(),
         ]);
 
         $remaining = $apiKey->daily_limit !== null

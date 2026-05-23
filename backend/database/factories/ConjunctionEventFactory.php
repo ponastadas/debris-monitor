@@ -25,24 +25,24 @@ class ConjunctionEventFactory extends Factory
 
     public function definition(): array
     {
-        $pair    = fake()->randomElement(self::DEBRIS_PAIRS);
-        $minRng  = round(fake()->randomFloat(3, 0.1, 9.9), 3);
-        $pc      = round(fake()->randomFloat(9, 0.0000001, 0.001), 9);
-        $tca     = fake()->dateTimeBetween('+2 hours', '+6 days');
+        $pair = fake()->randomElement(self::DEBRIS_PAIRS);
+        $minRng = round(fake()->randomFloat(3, 0.1, 9.9), 3);
+        $pc = round(fake()->randomFloat(9, 0.0000001, 0.001), 9);
+        $tca = fake()->dateTimeBetween('+2 hours', '+6 days');
 
         return [
-            'cdm_id'               => (string) fake()->unique()->numberBetween(1_000_000, 9_999_999),
-            'created_at_cdm'       => fake()->dateTimeBetween('-2 days', 'now'),
-            'tca'                  => $tca,
-            'min_range_km'         => $minRng,
-            'probability'          => $pc,
+            'cdm_id' => (string) fake()->unique()->numberBetween(1_000_000, 9_999_999),
+            'created_at_cdm' => fake()->dateTimeBetween('-2 days', 'now'),
+            'tca' => $tca,
+            'min_range_km' => $minRng,
+            'probability' => $pc,
             'emergency_reportable' => false,
-            'sat1_norad_id'        => $pair['sat1'],
-            'sat1_name'            => $pair['name1'],
-            'sat2_norad_id'        => $pair['sat2'],
-            'sat2_name'            => $pair['name2'],
-            'source'               => 'space_track_cdm',
-            'fetched_at'           => now(),
+            'sat1_norad_id' => $pair['sat1'],
+            'sat1_name' => $pair['name1'],
+            'sat2_norad_id' => $pair['sat2'],
+            'sat2_name' => $pair['name2'],
+            'source' => 'space_track_cdm',
+            'fetched_at' => now(),
         ];
     }
 
@@ -53,7 +53,7 @@ class ConjunctionEventFactory extends Factory
     {
         return $this->state([
             'min_range_km' => round(fake()->randomFloat(3, 0.05, 0.9), 3),
-            'probability'  => round(fake()->randomFloat(6, 0.001, 0.009), 6),
+            'probability' => round(fake()->randomFloat(6, 0.001, 0.009), 6),
         ]);
     }
 
@@ -62,7 +62,7 @@ class ConjunctionEventFactory extends Factory
     {
         return $this->state([
             'min_range_km' => round(fake()->randomFloat(3, 1.0, 4.0), 3),
-            'probability'  => round(fake()->randomFloat(8, 0.00001, 0.001), 8),
+            'probability' => round(fake()->randomFloat(8, 0.00001, 0.001), 8),
         ]);
     }
 
@@ -71,7 +71,7 @@ class ConjunctionEventFactory extends Factory
     {
         return $this->state([
             'min_range_km' => round(fake()->randomFloat(3, 7.0, 9.9), 3),
-            'probability'  => round(fake()->randomFloat(10, 0.0000001, 0.0000009), 10),
+            'probability' => round(fake()->randomFloat(10, 0.0000001, 0.0000009), 10),
         ]);
     }
 
@@ -88,7 +88,7 @@ class ConjunctionEventFactory extends Factory
     {
         return $this->state([
             'sat1_norad_id' => $noradId,
-            'sat1_name'     => $name ?: $noradId,
+            'sat1_name' => $name ?: $noradId,
         ]);
     }
 
@@ -97,7 +97,7 @@ class ConjunctionEventFactory extends Factory
     {
         return $this->state([
             'sat2_norad_id' => $noradId,
-            'sat2_name'     => $name ?: $noradId,
+            'sat2_name' => $name ?: $noradId,
         ]);
     }
 }

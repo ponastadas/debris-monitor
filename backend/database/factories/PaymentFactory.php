@@ -14,10 +14,10 @@ class PaymentFactory extends Factory
     public function definition(): array
     {
         return [
-            'user_id'     => User::factory(),
-            'amount'      => fake()->randomElement([2900, 9900, 49900]),
-            'currency'    => 'usd',
-            'status'      => 'succeeded',
+            'user_id' => User::factory(),
+            'amount' => fake()->randomElement([2900, 9900, 49900]),
+            'currency' => 'usd',
+            'status' => 'succeeded',
             'description' => fake()->sentence(4),
         ];
     }

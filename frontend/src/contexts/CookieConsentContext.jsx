@@ -3,8 +3,6 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 const CONSENT_KEY     = 'dm_cookie_consent';
 const CONSENT_VERSION = 1;
 
-const blank = { necessary: true, analytics: false, marketing: false };
-
 function readStored() {
   try {
     const raw = localStorage.getItem(CONSENT_KEY);
@@ -95,6 +93,7 @@ export function CookieConsentProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useCookieConsent() {
   const ctx = useContext(ConsentContext);
   if (!ctx) throw new Error('useCookieConsent must be inside <CookieConsentProvider>');

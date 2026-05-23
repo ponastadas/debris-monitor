@@ -31,11 +31,11 @@ class AdminMfaController extends Controller
         Cache::put(AdminMfaService::pendingKey($admin->id), $secret, now()->addMinutes(10));
 
         $uri = $this->mfa->getQrUri($admin, $secret);
-        $qr  = $this->mfa->generateQrBase64($uri);
+        $qr = $this->mfa->generateQrBase64($uri);
 
         return $this->success([
             'qr_code' => $qr,     // use as: data:image/svg+xml;base64,{qr_code}
-            'secret'  => $secret, // for manual entry in authenticator apps
+            'secret' => $secret, // for manual entry in authenticator apps
         ]);
     }
 
@@ -55,7 +55,7 @@ class AdminMfaController extends Controller
         $admin = auth('admin')->user();
 
         $pendingKey = AdminMfaService::pendingKey($admin->id);
-        $secret     = Cache::get($pendingKey);
+        $secret = Cache::get($pendingKey);
 
         if (! $secret) {
             return $this->error('MFA_SETUP_EXPIRED', 'MFA setup session expired. Please start again.', 422);
@@ -65,11 +65,11 @@ class AdminMfaController extends Controller
             return $this->error('MFA_INVALID', 'Invalid authentication code.', 422);
         }
 
-        $plainCodes  = $this->mfa->generateRecoveryCodes();
+        $plainCodes = $this->mfa->generateRecoveryCodes();
         $hashedCodes = $this->mfa->hashRecoveryCodes($plainCodes);
 
         $admin->update([
-            'mfa_secret'         => $secret,
+            'mfa_secret' => $secret,
             'mfa_recovery_codes' => $hashedCodes,
         ]);
 
@@ -100,7 +100,7 @@ class AdminMfaController extends Controller
         }
 
         $admin->update([
-            'mfa_secret'         => null,
+            'mfa_secret' => null,
             'mfa_recovery_codes' => null,
         ]);
 

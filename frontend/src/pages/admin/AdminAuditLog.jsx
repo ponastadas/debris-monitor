@@ -103,6 +103,7 @@ export default function AdminAuditLog() {
   };
 
   // Reload from page 1 whenever any filter changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setPage(1); load(1); }, [action, from, to]);
 
   const changePage = (p) => { setPage(p); load(p); };

@@ -23,14 +23,14 @@ class PageSeeder extends Seeder
 
         return [
             [
-                'title'            => 'Privacy Policy',
-                'slug'             => 'privacy-policy',
-                'excerpt'          => 'How SatView collects, uses, and protects your personal data.',
-                'meta_title'       => 'Privacy Policy — SatView',
+                'title' => 'Privacy Policy',
+                'slug' => 'privacy-policy',
+                'excerpt' => 'How SatView collects, uses, and protects your personal data.',
+                'meta_title' => 'Privacy Policy — SatView',
                 'meta_description' => 'SatView privacy policy: data collected, how it is used, your rights under GDPR, and how to contact us.',
-                'status'           => 'published',
-                'published_at'     => $now,
-                'content'          => <<<'MD'
+                'status' => 'published',
+                'published_at' => $now,
+                'content' => <<<'MD'
 # Privacy Policy
 
 **Last updated:** April 2026
@@ -149,14 +149,14 @@ MD,
             ],
 
             [
-                'title'            => 'Cookie Policy',
-                'slug'             => 'cookie-policy',
-                'excerpt'          => 'What cookies SatView uses and how to manage your preferences.',
-                'meta_title'       => 'Cookie Policy — SatView',
+                'title' => 'Cookie Policy',
+                'slug' => 'cookie-policy',
+                'excerpt' => 'What cookies SatView uses and how to manage your preferences.',
+                'meta_title' => 'Cookie Policy — SatView',
                 'meta_description' => 'SatView cookie policy: which cookies are used, their purpose, duration, and how to manage your preferences.',
-                'status'           => 'published',
-                'published_at'     => $now,
-                'content'          => <<<'MD'
+                'status' => 'published',
+                'published_at' => $now,
+                'content' => <<<'MD'
 # Cookie Policy
 
 **Last updated:** April 2026
@@ -231,14 +231,14 @@ MD,
             ],
 
             [
-                'title'            => 'Terms of Service',
-                'slug'             => 'terms',
-                'excerpt'          => 'The terms and conditions governing your use of SatView.',
-                'meta_title'       => 'Terms of Service — SatView',
+                'title' => 'Terms of Service',
+                'slug' => 'terms',
+                'excerpt' => 'The terms and conditions governing your use of SatView.',
+                'meta_title' => 'Terms of Service — SatView',
                 'meta_description' => 'Read the SatView Terms of Service: account responsibilities, API usage, billing, and prohibited uses.',
-                'status'           => 'published',
-                'published_at'     => $now,
-                'content'          => <<<'MD'
+                'status' => 'published',
+                'published_at' => $now,
+                'content' => <<<'MD'
 # Terms of Service
 
 **Last updated:** April 2026
@@ -362,14 +362,14 @@ MD,
             ],
 
             [
-                'title'            => 'About',
-                'slug'             => 'about',
-                'excerpt'          => 'What SatView is, why it exists, and how it works.',
-                'meta_title'       => 'About SatView',
+                'title' => 'About',
+                'slug' => 'about',
+                'excerpt' => 'What SatView is, why it exists, and how it works.',
+                'meta_title' => 'About SatView',
                 'meta_description' => 'SatView provides real-time satellite conjunction risk data via a clean API for developers and space startups.',
-                'status'           => 'published',
-                'published_at'     => $now,
-                'content'          => <<<'MD'
+                'status' => 'published',
+                'published_at' => $now,
+                'content' => <<<'MD'
 # About SatView
 
 SatView is a satellite conjunction risk monitoring platform designed for developers, researchers, and space startups who need programmatic access to orbital safety data.
@@ -423,14 +423,14 @@ MD,
             ],
 
             [
-                'title'            => 'How It Works',
-                'slug'             => 'how-it-works',
-                'excerpt'          => 'The orbital mechanics, data pipelines, and limitations behind SatView.',
-                'meta_title'       => 'How It Works — SatView',
+                'title' => 'How It Works',
+                'slug' => 'how-it-works',
+                'excerpt' => 'The orbital mechanics, data pipelines, and limitations behind SatView.',
+                'meta_title' => 'How It Works — SatView',
                 'meta_description' => 'How SatView uses TLE data, SGP4 propagation, and Space-Track CDM to compute satellite positions and conjunction risk.',
-                'status'           => 'published',
-                'published_at'     => $now,
-                'content'          => <<<'MD'
+                'status' => 'published',
+                'published_at' => $now,
+                'content' => <<<'MD'
 # How It Works
 
 SatView combines publicly available orbital data with standard propagation algorithms to compute satellite positions and conjunction risk. This page explains the technical approach — and its limitations.
@@ -542,14 +542,14 @@ MD,
             ],
 
             [
-                'title'            => 'Contact',
-                'slug'             => 'contact',
-                'excerpt'          => 'Get in touch with the SatView team.',
-                'meta_title'       => 'Contact — SatView',
+                'title' => 'Contact',
+                'slug' => 'contact',
+                'excerpt' => 'Get in touch with the SatView team.',
+                'meta_title' => 'Contact — SatView',
                 'meta_description' => 'Contact the SatView team for support, enterprise enquiries, or general questions.',
-                'status'           => 'published',
-                'published_at'     => $now,
-                'content'          => <<<'MD'
+                'status' => 'published',
+                'published_at' => $now,
+                'content' => <<<'MD'
 # Contact
 
 We are happy to hear from you.

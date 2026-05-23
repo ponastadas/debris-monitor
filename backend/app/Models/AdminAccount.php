@@ -38,10 +38,10 @@ class AdminAccount extends Authenticatable
     protected function casts(): array
     {
         return [
-            'password'           => 'hashed',
-            'is_active'          => 'boolean',
-            'last_login_at'      => 'datetime',
-            'mfa_secret'         => 'encrypted',
+            'password' => 'hashed',
+            'is_active' => 'boolean',
+            'last_login_at' => 'datetime',
+            'mfa_secret' => 'encrypted',
             'mfa_recovery_codes' => 'encrypted:array',
         ];
     }

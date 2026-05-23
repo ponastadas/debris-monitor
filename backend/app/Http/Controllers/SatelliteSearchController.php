@@ -16,11 +16,11 @@ class SatelliteSearchController extends Controller
      * recognisable relation to the popular name a user would type.
      */
     private const ALIASES = [
-        'hubble'   => '20580',  // HST
-        'hst'      => '20580',
+        'hubble' => '20580',  // HST
+        'hst' => '20580',
         'tiangong' => '48274',  // CSS TIANHE
-        'tianhe'   => '48274',
-        'css'      => '48274',
+        'tianhe' => '48274',
+        'css' => '48274',
     ];
 
     /**
@@ -42,7 +42,7 @@ class SatelliteSearchController extends Controller
             return $this->success([]);
         }
 
-        $cacheKey = 'sat_search:' . md5(strtolower($q));
+        $cacheKey = 'sat_search:'.md5(strtolower($q));
 
         if ($cached = Cache::get($cacheKey)) {
             return $this->success($cached);
@@ -51,6 +51,7 @@ class SatelliteSearchController extends Controller
         if (ctype_digit($q)) {
             $results = $this->searchByNorad($q);
             Cache::put($cacheKey, $results, 300);
+
             return $this->success($results);
         }
 
@@ -68,7 +69,7 @@ class SatelliteSearchController extends Controller
         return Satellite::whereHas('currentTle')
             ->where(function ($qb) use ($q) {
                 $qb->where('norad_id', $q)
-                   ->orWhere('norad_id', 'like', "{$q}%");
+                    ->orWhere('norad_id', 'like', "{$q}%");
             })
             ->limit(self::MAX_RESULTS)
             ->get(['norad_id', 'name'])
@@ -88,14 +89,14 @@ class SatelliteSearchController extends Controller
      */
     private function searchByText(string $q): array
     {
-        $seen    = [];
+        $seen = [];
         $results = [];
 
         // Strategy 1: FULLTEXT on name + name_normalized (fast, uses index)
         if (strlen($q) >= 3) {
             foreach ($this->searchByFullText($q) as $r) {
                 $seen[$r['norad_id']] = true;
-                $results[]            = $r;
+                $results[] = $r;
             }
         }
 
@@ -105,7 +106,7 @@ class SatelliteSearchController extends Controller
         if (empty($results)) {
             foreach ($this->searchByLike($q, $seen) as $r) {
                 $seen[$r['norad_id']] = true;
-                $results[]            = $r;
+                $results[] = $r;
             }
         }
 
@@ -113,7 +114,7 @@ class SatelliteSearchController extends Controller
         if (count($results) < self::MAX_RESULTS) {
             foreach ($this->searchByDesignator($q, $seen) as $r) {
                 $seen[$r['norad_id']] = true;
-                $results[]            = $r;
+                $results[] = $r;
             }
         }
 
@@ -133,8 +134,8 @@ class SatelliteSearchController extends Controller
                 }
             } else {
                 $aliasRow = array_filter($results, fn ($r) => $r['norad_id'] === $aliasId);
-                $rest     = array_filter($results, fn ($r) => $r['norad_id'] !== $aliasId);
-                $results  = array_values(array_merge(array_values($aliasRow), array_values($rest)));
+                $rest = array_filter($results, fn ($r) => $r['norad_id'] !== $aliasId);
+                $results = array_values(array_merge(array_values($aliasRow), array_values($rest)));
             }
         }
 
@@ -154,10 +155,10 @@ class SatelliteSearchController extends Controller
      */
     private function searchByFullText(string $q): array
     {
-        $terms   = preg_split('/\s+/', trim($q), -1, PREG_SPLIT_NO_EMPTY);
+        $terms = preg_split('/\s+/', trim($q), -1, PREG_SPLIT_NO_EMPTY);
         // Use AND mode (+term*): every typed word must appear in the name.
         // "NOAA 19" → "+NOAA* +19*" finds only NOAA 19, not every satellite with "19".
-        $ftQuery = '+' . implode('* +', $terms) . '*';
+        $ftQuery = '+'.implode('* +', $terms).'*';
 
         return Satellite::whereHas('currentTle')
             ->whereRaw('MATCH(name, name_normalized) AGAINST(? IN BOOLEAN MODE)', [$ftQuery])
@@ -184,9 +185,9 @@ class SatelliteSearchController extends Controller
         $rows = Satellite::whereHas('currentTle')
             ->where(function ($qb) use ($q) {
                 $qb->where('name', 'like', "{$q}%")
-                   ->orWhere('name', 'like', "%{$q}%");
+                    ->orWhere('name', 'like', "%{$q}%");
             })
-            ->orderByRaw("CASE WHEN name LIKE ? THEN 0 ELSE 1 END", ["{$q}%"])
+            ->orderByRaw('CASE WHEN name LIKE ? THEN 0 ELSE 1 END', ["{$q}%"])
             ->limit(self::MAX_RESULTS)
             ->get(['norad_id', 'name']);
 

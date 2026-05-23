@@ -14,13 +14,14 @@ use PragmaRX\Google2FA\Google2FA;
 class AdminMfaService
 {
     private const RECOVERY_COUNT = 8;
+
     private const RECOVERY_LENGTH = 5; // each half of XXXXX-XXXXX
 
     private Google2FA $totp;
 
     public function __construct()
     {
-        $this->totp = new Google2FA();
+        $this->totp = new Google2FA;
     }
 
     // ── Secret generation ─────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ class AdminMfaService
         $writer = new Writer(
             new ImageRenderer(
                 new RendererStyle(220),
-                new SvgImageBackEnd(),
+                new SvgImageBackEnd,
             )
         );
 

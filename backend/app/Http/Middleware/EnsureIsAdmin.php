@@ -22,9 +22,9 @@ class EnsureIsAdmin
         if (! $admin?->isActive()) {
             return response()->json([
                 'success' => false,
-                'data'    => null,
-                'error'   => [
-                    'code'    => 'ACCOUNT_INACTIVE',
+                'data' => null,
+                'error' => [
+                    'code' => 'ACCOUNT_INACTIVE',
                     'message' => 'This admin account has been deactivated.',
                     'details' => [],
                 ],

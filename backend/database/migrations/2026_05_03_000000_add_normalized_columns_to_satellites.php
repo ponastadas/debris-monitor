@@ -12,14 +12,14 @@ return new class extends Migration
         if (DB::connection()->getDriverName() === 'mysql') {
             Schema::table('satellites', function (Blueprint $table) {
                 $table->string('name_normalized', 120)
-                      ->storedAs("REGEXP_REPLACE(LOWER(`name`), '[^a-z0-9]', '')")
-                      ->nullable()
-                      ->after('name');
+                    ->storedAs("REGEXP_REPLACE(LOWER(`name`), '[^a-z0-9]', '')")
+                    ->nullable()
+                    ->after('name');
 
                 $table->string('designator_normalized', 20)
-                      ->storedAs("REGEXP_REPLACE(LOWER(`international_designator`), '[^a-z0-9]', '')")
-                      ->nullable()
-                      ->after('international_designator');
+                    ->storedAs("REGEXP_REPLACE(LOWER(`international_designator`), '[^a-z0-9]', '')")
+                    ->nullable()
+                    ->after('international_designator');
 
                 $table->index('name_normalized');
                 $table->index('designator_normalized');

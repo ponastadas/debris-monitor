@@ -59,11 +59,11 @@ class SatelliteSyncCommand extends Command
 
     /** Maps Space-Track OBJECT_TYPE → our internal object_type. */
     private const SPACE_TRACK_TYPE_MAP = [
-        'PAYLOAD'      => 'satellite',
-        'ROCKET BODY'  => 'rocket_body',
-        'DEBRIS'       => 'debris',
-        'UNKNOWN'      => null,
-        'TBA'          => null,
+        'PAYLOAD' => 'satellite',
+        'ROCKET BODY' => 'rocket_body',
+        'DEBRIS' => 'debris',
+        'UNKNOWN' => null,
+        'TBA' => null,
     ];
 
     private const CELESTRAK_URL = 'https://celestrak.org/NORAD/elements/gp.php';
@@ -84,39 +84,39 @@ class SatelliteSyncCommand extends Command
     ];
 
     private const OBJECT_TYPE_MAP = [
-        'active'             => 'satellite',
-        'stations'           => 'satellite',
-        'weather'            => 'satellite',
-        'noaa'               => 'satellite',
-        'goes'               => 'satellite',
-        'resource'           => 'satellite',
-        'sarsat'             => 'satellite',
-        'dmc'                => 'satellite',
-        'tdrss'              => 'satellite',
-        'argos'              => 'satellite',
-        'planet'             => 'satellite',
-        'spire'              => 'satellite',
-        'oneweb'             => 'satellite',
-        'starlink'           => 'satellite',
-        'iridium-NEXT'       => 'satellite',
-        'geo'                => 'satellite',
-        'last-30-days'       => 'satellite',
-        'gps-ops'            => 'satellite',
-        'glo-ops'            => 'satellite',
-        'galileo'            => 'satellite',
-        'beidou'             => 'satellite',
-        'sbas'               => 'satellite',
-        'amateur'            => 'satellite',
-        'cubesat'            => 'satellite',
-        'fengyun-1c-debris'  => 'debris',
+        'active' => 'satellite',
+        'stations' => 'satellite',
+        'weather' => 'satellite',
+        'noaa' => 'satellite',
+        'goes' => 'satellite',
+        'resource' => 'satellite',
+        'sarsat' => 'satellite',
+        'dmc' => 'satellite',
+        'tdrss' => 'satellite',
+        'argos' => 'satellite',
+        'planet' => 'satellite',
+        'spire' => 'satellite',
+        'oneweb' => 'satellite',
+        'starlink' => 'satellite',
+        'iridium-NEXT' => 'satellite',
+        'geo' => 'satellite',
+        'last-30-days' => 'satellite',
+        'gps-ops' => 'satellite',
+        'glo-ops' => 'satellite',
+        'galileo' => 'satellite',
+        'beidou' => 'satellite',
+        'sbas' => 'satellite',
+        'amateur' => 'satellite',
+        'cubesat' => 'satellite',
+        'fengyun-1c-debris' => 'debris',
         'cosmos-2251-debris' => 'debris',
-        'iridium-33-debris'  => 'debris',
-        '2019-006'           => 'debris',
+        'iridium-33-debris' => 'debris',
+        '2019-006' => 'debris',
     ];
 
     public function handle(): int
     {
-        $isDryRun      = $this->option('dry-run');
+        $isDryRun = $this->option('dry-run');
         $isIncremental = $this->option('incremental');
 
         if ($this->option('source') !== 'celestrak') {
@@ -136,7 +136,7 @@ class SatelliteSyncCommand extends Command
             $groups = self::DEFAULT_GROUPS;
         }
 
-        $this->info('SatView — Satellite Catalog Sync (CelesTrak)' . ($isIncremental ? ' (incremental)' : ''));
+        $this->info('SatView — Satellite Catalog Sync (CelesTrak)'.($isIncremental ? ' (incremental)' : ''));
         $this->line('Groups: '.implode(', ', $groups));
         $isDryRun && $this->warn('DRY RUN — no data will be written');
         $this->newLine();
@@ -150,8 +150,8 @@ class SatelliteSyncCommand extends Command
 
         $totalSatellites = 0;
         $totalTleRecords = 0;
-        $now             = now();
-        $first           = true;
+        $now = now();
+        $first = true;
 
         foreach ($groups as $group) {
             $group = trim($group);
@@ -166,7 +166,8 @@ class SatelliteSyncCommand extends Command
             $parsed = $this->fetchGroup($group);
 
             if ($parsed === null) {
-                $this->warn("  ✗ Failed to fetch — skipping");
+                $this->warn('  ✗ Failed to fetch — skipping');
+
                 continue;
             }
 
@@ -175,6 +176,7 @@ class SatelliteSyncCommand extends Command
 
             if ($isDryRun || $count === 0) {
                 $totalSatellites += $count;
+
                 continue;
             }
 
@@ -217,25 +219,27 @@ class SatelliteSyncCommand extends Command
 
         if (! $user || ! $pass) {
             $this->warn('SPACE_TRACK_USER / SPACE_TRACK_PASS not set — falling back to CelesTrak.');
+
             return $this->handleCelesTrak($isDryRun, $isIncremental);
         }
 
-        $client = new SpaceTrackClient();
+        $client = new SpaceTrackClient;
 
-        $this->info('SatView — Satellite Catalog Sync (Space-Track)' . ($isIncremental ? ' (incremental)' : ''));
+        $this->info('SatView — Satellite Catalog Sync (Space-Track)'.($isIncremental ? ' (incremental)' : ''));
         $this->line('Logging in to Space-Track.org…');
 
         if (! $client->login($user, $pass)) {
             $this->error('Login failed — check SPACE_TRACK_USER / SPACE_TRACK_PASS in .env');
+
             return self::FAILURE;
         }
 
         $this->line('  Authenticated');
         $this->newLine();
 
-        $now   = now();
+        $now = now();
         $total = 0;
-        $tles  = 0;
+        $tles = 0;
 
         if ($isIncremental) {
             $since = now()->subDay();
@@ -245,6 +249,7 @@ class SatelliteSyncCommand extends Command
 
             if ($records === null) {
                 $this->error('Failed to fetch incremental GP data from Space-Track');
+
                 return self::FAILURE;
             }
 
@@ -256,7 +261,7 @@ class SatelliteSyncCommand extends Command
                 [$upserted, $tleInserted] = $this->persistBatch($records, $now, 'spacetrack');
                 $this->line("  ✓ Upserted {$upserted} satellites, {$tleInserted} TLE records");
                 $total += $upserted;
-                $tles  += $tleInserted;
+                $tles += $tleInserted;
             } else {
                 $total += $count;
             }
@@ -267,7 +272,8 @@ class SatelliteSyncCommand extends Command
                 $records = $client->fetchGpByType($type);
 
                 if ($records === null) {
-                    $this->warn("  ✗ Failed to fetch — skipping");
+                    $this->warn('  ✗ Failed to fetch — skipping');
+
                     continue;
                 }
 
@@ -276,6 +282,7 @@ class SatelliteSyncCommand extends Command
 
                 if ($isDryRun || $count === 0) {
                     $total += $count;
+
                     continue;
                 }
 
@@ -283,7 +290,7 @@ class SatelliteSyncCommand extends Command
                 [$upserted, $tleInserted] = $this->persistBatch($records, $now, 'spacetrack');
                 $this->line("  ✓ Upserted {$upserted} satellites, {$tleInserted} TLE records");
                 $total += $upserted;
-                $tles  += $tleInserted;
+                $tles += $tleInserted;
 
                 usleep(500_000); // 500ms between type queries
             }
@@ -319,7 +326,7 @@ class SatelliteSyncCommand extends Command
      */
     private function runStalenessSweep(bool $isDryRun, ?SpaceTrackClient $client = null): void
     {
-        $limit     = (int) env('SATELLITE_SYNC_STALE_LIMIT', 200);
+        $limit = (int) env('SATELLITE_SYNC_STALE_LIMIT', 200);
         $threshold = now()->subHours(24);
 
         // Left-join to tle_records so we can filter on fetched_at and order by it,
@@ -327,11 +334,11 @@ class SatelliteSyncCommand extends Command
         $candidates = Satellite::select('satellites.*')
             ->leftJoin('tle_records', function ($join) {
                 $join->on('tle_records.satellite_id', '=', 'satellites.id')
-                     ->where('tle_records.is_current', true);
+                    ->where('tle_records.is_current', true);
             })
             ->where(function ($q) use ($threshold) {
                 $q->whereNull('tle_records.id')
-                  ->orWhere('tle_records.fetched_at', '<', $threshold);
+                    ->orWhere('tle_records.fetched_at', '<', $threshold);
             })
             ->orderByRaw('COALESCE(tle_records.fetched_at, 0) ASC')
             ->limit($limit + 1)   // fetch one extra to detect the cap
@@ -341,6 +348,7 @@ class SatelliteSyncCommand extends Command
 
         if ($total === 0) {
             $this->line('Staleness sweep: all TLEs are fresh — nothing to do');
+
             return;
         }
 
@@ -348,13 +356,14 @@ class SatelliteSyncCommand extends Command
         $candidates = $candidates->take($limit);
 
         $this->newLine();
-        $this->line("Staleness sweep: <comment>{$candidates->count()}</comment> stale satellite(s)" . ($capped ? " (cap {$limit} hit — more remain)" : ''));
+        $this->line("Staleness sweep: <comment>{$candidates->count()}</comment> stale satellite(s)".($capped ? " (cap {$limit} hit — more remain)" : ''));
         $capped && $this->warn("  Limit of {$limit} reached; remaining satellites will be swept on the next run");
 
         if ($isDryRun) {
             foreach ($candidates as $sat) {
                 $this->line("  [dry-run] would refresh NORAD {$sat->norad_id} ({$sat->name})");
             }
+
             return;
         }
 
@@ -364,14 +373,15 @@ class SatelliteSyncCommand extends Command
             // Space-Track mode: fetch all stale satellites in bulk (comma-delimited list)
             // to comply with the policy against individual per-satellite requests.
             // Chunk into batches of 500 to stay within safe URL-length limits.
-            $noradIds  = $candidates->pluck('norad_id')->all();
+            $noradIds = $candidates->pluck('norad_id')->all();
             $satByNorad = $candidates->keyBy('norad_id');
 
             foreach (array_chunk($noradIds, 500) as $chunk) {
                 $records = $client->fetchGpByNoradList($chunk);
 
                 if ($records === null) {
-                    $this->warn("  Staleness sweep: batch fetch failed — skipping this chunk");
+                    $this->warn('  Staleness sweep: batch fetch failed — skipping this chunk');
+
                     continue;
                 }
 
@@ -393,7 +403,7 @@ class SatelliteSyncCommand extends Command
                 $result = $this->fetchSingleTle($sat->norad_id);
 
                 if ($result === false) {
-                    $this->warn("  Staleness sweep stopped: CelesTrak returned 429 — will retry on next run");
+                    $this->warn('  Staleness sweep stopped: CelesTrak returned 429 — will retry on next run');
                     break;
                 }
 
@@ -401,6 +411,7 @@ class SatelliteSyncCommand extends Command
 
                 if ($result === null) {
                     $this->line("  ✗ Could not refresh NORAD {$sat->norad_id} — skipping");
+
                     continue;
                 }
 
@@ -426,11 +437,12 @@ class SatelliteSyncCommand extends Command
     {
         try {
             $response = Http::timeout(10)->get(self::CELESTRAK_URL, [
-                'CATNR'  => $noradId,
+                'CATNR' => $noradId,
                 'FORMAT' => 'TLE',
             ]);
         } catch (\Throwable $e) {
             $this->warn("  HTTP error for NORAD {$noradId}: {$e->getMessage()}");
+
             return null;
         }
 
@@ -469,7 +481,7 @@ class SatelliteSyncCommand extends Command
      *
      * Returns an empty array on network failure; callers fall back to group-level types.
      *
-     * @return array<string, string|null>  norad_id (5-digit zero-padded) => object_type|null
+     * @return array<string, string|null> norad_id (5-digit zero-padded) => object_type|null
      */
     private function fetchSatcatTypes(): array
     {
@@ -479,15 +491,17 @@ class SatelliteSyncCommand extends Command
             $response = Http::timeout(120)->get(self::SATCAT_URL);
         } catch (\Throwable $e) {
             $this->warn("SATCAT fetch failed: {$e->getMessage()} — falling back to group-level types");
+
             return [];
         }
 
         if (! $response->ok()) {
             $this->warn("SATCAT fetch failed: HTTP {$response->status()} — falling back to group-level types");
+
             return [];
         }
 
-        $map   = [];
+        $map = [];
         $first = true;
 
         foreach (explode("\n", $response->body()) as $line) {
@@ -498,6 +512,7 @@ class SatelliteSyncCommand extends Command
 
             if ($first) {
                 $first = false; // skip header row
+
                 continue;
             }
 
@@ -514,7 +529,7 @@ class SatelliteSyncCommand extends Command
             }
 
             // Normalise to 5-digit zero-padded string to match TLE-parsed norad_id values.
-            $noradId    = str_pad($rawId, 5, '0', STR_PAD_LEFT);
+            $noradId = str_pad($rawId, 5, '0', STR_PAD_LEFT);
             $satcatType = trim($cols[3]);
 
             if (array_key_exists($satcatType, self::SATCAT_TYPE_MAP)) {
@@ -537,21 +552,23 @@ class SatelliteSyncCommand extends Command
     {
         try {
             $response = Http::timeout(90)->get(self::CELESTRAK_URL, [
-                'GROUP'  => $group,
+                'GROUP' => $group,
                 'FORMAT' => 'TLE',
             ]);
         } catch (\Throwable $e) {
             $this->warn("  HTTP error: {$e->getMessage()}");
+
             return null;
         }
 
         if (! $response->ok()) {
             $body = trim($response->body());
             if ($response->status() === 403 && str_contains($body, 'not updated since your last')) {
-                $this->warn("  Rate-limited by CelesTrak (data unchanged since last download — retry in 2h)");
+                $this->warn('  Rate-limited by CelesTrak (data unchanged since last download — retry in 2h)');
             } else {
                 $this->warn("  HTTP {$response->status()}");
             }
+
             return null;
         }
 
@@ -579,7 +596,7 @@ class SatelliteSyncCommand extends Command
         $results = [];
 
         for ($i = 0; $i + 2 < count($lines); $i += 3) {
-            $name  = $lines[$i];
+            $name = $lines[$i];
             $line1 = $lines[$i + 1];
             $line2 = $lines[$i + 2];
 
@@ -594,10 +611,10 @@ class SatelliteSyncCommand extends Command
             }
 
             $results[] = [
-                'name'                    => $name,
-                'norad_id'                => $noradId,
-                'line1'                   => $line1,
-                'line2'                   => $line2,
+                'name' => $name,
+                'norad_id' => $noradId,
+                'line1' => $line1,
+                'line2' => $line2,
                 'international_designator' => $this->parseDesignator($line1),
             ];
         }
@@ -611,7 +628,7 @@ class SatelliteSyncCommand extends Command
      * When object_type is null the existing DB value is preserved (incremental updates).
      * Returns [satellites upserted, TLE records inserted].
      *
-     * @param list<array{name: string, norad_id: string, line1: string, line2: string, object_type: string|null}> $parsed
+     * @param  list<array{name: string, norad_id: string, line1: string, line2: string, object_type: string|null}>  $parsed
      */
     private function persistBatch(array $parsed, Carbon $now, string $source = 'celestrak'): array
     {
@@ -619,12 +636,12 @@ class SatelliteSyncCommand extends Command
         // occasionally contain the same satellite twice (e.g. active group overlaps
         // with stations). MySQL's ON DUPLICATE KEY UPDATE rejects two rows with the
         // same unique key in a single INSERT statement.
-        $seen   = [];
+        $seen = [];
         $unique = [];
         foreach ($parsed as $p) {
             if (! isset($seen[$p['norad_id']])) {
                 $seen[$p['norad_id']] = true;
-                $unique[]             = $p;
+                $unique[] = $p;
             }
         }
         $parsed = $unique;
@@ -634,21 +651,22 @@ class SatelliteSyncCommand extends Command
         // (9 columns × 7,000 rows = 63,000 placeholders per batch).
         // When object_type is null (e.g. incremental fetch with mixed types), skip updating
         // it so the existing classification is preserved.
-        $withType    = array_filter($parsed, fn ($p) => ($p['object_type'] ?? null) !== null);
+        $withType = array_filter($parsed, fn ($p) => ($p['object_type'] ?? null) !== null);
         $withoutType = array_filter($parsed, fn ($p) => ($p['object_type'] ?? null) === null);
 
         $makeRow = function (array $p) use ($now, $source): array {
             $type = $p['object_type'] ?? null;
+
             return [
-                'norad_id'                => $p['norad_id'],
-                'name'                    => $p['name'],
-                'object_type'             => $type,
+                'norad_id' => $p['norad_id'],
+                'name' => $p['name'],
+                'object_type' => $type,
                 'international_designator' => $p['international_designator'] ?? null,
-                'is_active'               => $type !== 'debris' && $type !== 'rocket_body',
-                'catalog_source'          => $source,
-                'last_seen_at'            => $now->toDateTimeString(),
-                'created_at'              => $now->toDateTimeString(),
-                'updated_at'              => $now->toDateTimeString(),
+                'is_active' => $type !== 'debris' && $type !== 'rocket_body',
+                'catalog_source' => $source,
+                'last_seen_at' => $now->toDateTimeString(),
+                'created_at' => $now->toDateTimeString(),
+                'updated_at' => $now->toDateTimeString(),
             ];
         };
 
@@ -670,7 +688,7 @@ class SatelliteSyncCommand extends Command
         }
 
         // Step 2: Fetch satellite IDs we just upserted
-        $noradIds    = array_column($parsed, 'norad_id');
+        $noradIds = array_column($parsed, 'norad_id');
         $satelliteMap = Satellite::whereIn('norad_id', $noradIds)
             ->pluck('id', 'norad_id');
 
@@ -694,14 +712,14 @@ class SatelliteSyncCommand extends Command
 
             $tleRows[] = [
                 'satellite_id' => $satelliteId,
-                'line1'        => $p['line1'],
-                'line2'        => $p['line2'],
-                'epoch_at'     => $this->parseEpoch($p['line1']),
-                'source'       => $source,
-                'fetched_at'   => $now->toDateTimeString(),
-                'is_current'   => true,
-                'created_at'   => $now->toDateTimeString(),
-                'updated_at'   => $now->toDateTimeString(),
+                'line1' => $p['line1'],
+                'line2' => $p['line2'],
+                'epoch_at' => $this->parseEpoch($p['line1']),
+                'source' => $source,
+                'fetched_at' => $now->toDateTimeString(),
+                'is_current' => true,
+                'created_at' => $now->toDateTimeString(),
+                'updated_at' => $now->toDateTimeString(),
             ];
         }
 
@@ -727,9 +745,9 @@ class SatelliteSyncCommand extends Command
         }
 
         // Columns 9-10: 2-digit launch year; 11-13: launch number; 14-16: piece
-        $year2  = substr($raw, 0, 2);
+        $year2 = substr($raw, 0, 2);
         $launch = substr($raw, 2, 3);
-        $piece  = ltrim(substr($raw, 5), ' ') ?: null;
+        $piece = ltrim(substr($raw, 5), ' ') ?: null;
 
         if (! ctype_digit($year2) || ! ctype_digit($launch)) {
             return null;
@@ -757,7 +775,7 @@ class SatelliteSyncCommand extends Command
                 return null;
             }
 
-            $year2   = (int) substr($epochStr, 0, 2);
+            $year2 = (int) substr($epochStr, 0, 2);
             $dayFrac = (float) substr($epochStr, 2);
 
             $year = $year2 >= 57 ? 1900 + $year2 : 2000 + $year2;

@@ -57,38 +57,54 @@ class AdminAuditLog extends Model
     // ── Event catalogue ───────────────────────────────────────────────────────
 
     // Auth
-    const LOGIN_SUCCESS          = 'login.success';
-    const LOGIN_FAILED           = 'login.failed';
-    const LOGIN_FAILED_INACTIVE  = 'login.failed_inactive';
-    const LOGOUT                 = 'logout';
+    const LOGIN_SUCCESS = 'login.success';
+
+    const LOGIN_FAILED = 'login.failed';
+
+    const LOGIN_FAILED_INACTIVE = 'login.failed_inactive';
+
+    const LOGOUT = 'logout';
 
     // User management
-    const IMPERSONATION_STARTED  = 'impersonation.started';
-    const USER_CREATED           = 'user.created';
-    const USER_UPDATED           = 'user.updated';
-    const USER_SUSPENDED         = 'user.suspended';
-    const USER_ACTIVATED         = 'user.activated';
+    const IMPERSONATION_STARTED = 'impersonation.started';
+
+    const USER_CREATED = 'user.created';
+
+    const USER_UPDATED = 'user.updated';
+
+    const USER_SUSPENDED = 'user.suspended';
+
+    const USER_ACTIVATED = 'user.activated';
 
     // Billing
-    const PAYMENT_REFUNDED       = 'payment.refunded';
-    const SUBSCRIPTION_UPDATED   = 'subscription.updated';
+    const PAYMENT_REFUNDED = 'payment.refunded';
+
+    const SUBSCRIPTION_UPDATED = 'subscription.updated';
 
     // API keys
-    const API_KEY_REVOKED        = 'api_key.revoked';
+    const API_KEY_REVOKED = 'api_key.revoked';
 
     // MFA
-    const MFA_ENABLED            = 'mfa.enabled';
-    const MFA_DISABLED           = 'mfa.disabled';
-    const MFA_CHALLENGE_PASSED   = 'mfa.challenge_passed';
-    const MFA_CHALLENGE_FAILED   = 'mfa.challenge_failed';
-    const MFA_RECOVERY_USED      = 'mfa.recovery_used';
+    const MFA_ENABLED = 'mfa.enabled';
+
+    const MFA_DISABLED = 'mfa.disabled';
+
+    const MFA_CHALLENGE_PASSED = 'mfa.challenge_passed';
+
+    const MFA_CHALLENGE_FAILED = 'mfa.challenge_failed';
+
+    const MFA_RECOVERY_USED = 'mfa.recovery_used';
 
     // Pages (CMS)
-    const PAGE_CREATED           = 'page.created';
-    const PAGE_UPDATED           = 'page.updated';
-    const PAGE_PUBLISHED         = 'page.published';
-    const PAGE_UNPUBLISHED       = 'page.unpublished';
-    const PAGE_DELETED           = 'page.deleted';
+    const PAGE_CREATED = 'page.created';
+
+    const PAGE_UPDATED = 'page.updated';
+
+    const PAGE_PUBLISHED = 'page.published';
+
+    const PAGE_UNPUBLISHED = 'page.unpublished';
+
+    const PAGE_DELETED = 'page.deleted';
 
     // ── Model config ──────────────────────────────────────────────────────────
 
@@ -102,7 +118,7 @@ class AdminAuditLog extends Model
     protected function casts(): array
     {
         return [
-            'metadata'   => 'array',
+            'metadata' => 'array',
             'created_at' => 'datetime',
         ];
     }
@@ -139,11 +155,11 @@ class AdminAuditLog extends Model
     /**
      * Write a single immutable audit entry.
      *
-     * @param  ?int     $adminId    Null only for pre-authentication failures (unknown email).
-     * @param  string   $action     One of the class constants defined above.
-     * @param  ?string  $targetType Eloquent model class shortname, e.g. 'User', 'Payment'.
-     * @param  ?int     $targetId   Primary key of the target record.
-     * @param  array    $metadata   Contextual data. Must NOT contain passwords, tokens, or secrets.
+     * @param  ?int  $adminId  Null only for pre-authentication failures (unknown email).
+     * @param  string  $action  One of the class constants defined above.
+     * @param  ?string  $targetType  Eloquent model class shortname, e.g. 'User', 'Payment'.
+     * @param  ?int  $targetId  Primary key of the target record.
+     * @param  array  $metadata  Contextual data. Must NOT contain passwords, tokens, or secrets.
      */
     public static function record(
         ?int $adminId,
@@ -154,12 +170,12 @@ class AdminAuditLog extends Model
     ): void {
         static::create([
             'admin_account_id' => $adminId,
-            'action'           => $action,
-            'target_type'      => $targetType,
-            'target_id'        => $targetId,
-            'metadata'         => $metadata ?: null,
-            'ip'               => request()->ip(),
-            'user_agent'       => request()->userAgent(),
+            'action' => $action,
+            'target_type' => $targetType,
+            'target_id' => $targetId,
+            'metadata' => $metadata ?: null,
+            'ip' => request()->ip(),
+            'user_agent' => request()->userAgent(),
         ]);
     }
 }

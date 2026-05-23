@@ -603,30 +603,6 @@ async function fetchConjunctions(noradId) {
   };
 }
 
-function generateMockDebris(satLat, satLon, satAlt) {
-  const debris = [];
-  for (let i = 0; i < 9; i++) {
-    const latOff = (Math.random() - 0.5) * 12;
-    const lonOff = (Math.random() - 0.5) * 12;
-    const altOff = (Math.random() - 0.5) * 250;
-    const dLat = satLat + latOff;
-    const dLon = satLon + lonOff;
-    const dAlt = satAlt + altOff;
-    const dist = Math.sqrt(latOff ** 2 + lonOff ** 2) * 111 + Math.abs(altOff);
-    const missKm = (dist * 2 + Math.random() * 300).toFixed(1);
-    const prob = Math.max(0.000001, (1 / (missKm * 0.4)) * Math.random() * 0.01).toFixed(7);
-    const riskScore = Math.min(95, Math.round(100 / (missKm * 0.08 + 1)));
-    const riskLevel = riskScore > 60 ? "HIGH" : riskScore > 30 ? "MEDIUM" : "LOW";
-    debris.push({
-      id: `DEB-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
-      lat: dLat, lon: dLon, alt: dAlt.toFixed(0),
-      missKm, prob, riskScore, riskLevel,
-      tca: new Date(Date.now() + Math.random() * 86400000 * 5).toISOString().slice(0, 10),
-    });
-  }
-  return debris.sort((a, b) => b.riskScore - a.riskScore);
-}
-
 export default function SatelliteTracker({
   initialNoradId   = "25544",
   savedSats        = [],
