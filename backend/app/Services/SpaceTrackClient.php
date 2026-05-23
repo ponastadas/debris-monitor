@@ -78,7 +78,8 @@ class SpaceTrackClient
      * Fetch all currently tracked GP objects of a given OBJECT_TYPE.
      *
      * Paginated in 2000-record pages to stay within PHP's 128M memory limit.
-     * DECAY_DATE filter excludes historical/re-entered objects.
+     * DECAY_DATE + EPOCH filters exclude re-entered objects and stale ephemerides,
+     * per Space-Track GP usage guidelines (epoch/%3Enow-10/).
      *
      * Valid types: PAYLOAD | ROCKET BODY | DEBRIS | UNKNOWN | TBA
      *
@@ -89,7 +90,8 @@ class SpaceTrackClient
     {
         $base = self::GP_BASE
             . '/OBJECT_TYPE/' . rawurlencode($type)
-            . '/DECAY_DATE/null-val';
+            . '/DECAY_DATE/null-val'
+            . '/EPOCH/%3Enow-10';   // only propagable ephemerides (Space-Track guideline)
 
         return $this->fetchGpPaginated($base);
     }
@@ -107,6 +109,60 @@ class SpaceTrackClient
             . '/DECAY_DATE/null-val';
 
         return $this->fetchGpPaginated($base);
+    }
+
+    /**
+     * Fetch GP records for a list of NORAD IDs in a single comma-delimited request.
+     *
+     * This avoids sending one request per satellite (forbidden by Space-Track policy).
+     * Chunking is the caller's responsibility — pass at most ~500 IDs per call to stay
+     * within safe URL-length limits.
+     *
+     * @param  list<string>  $noradIds  5-digit zero-padded NORAD IDs
+     * @return list<array{norad_id: string, name: string, object_type: string, international_designator: string|null, line1: string, line2: string}>|null
+     *         null = network/HTTP error
+     */
+    public function fetchGpByNoradList(array $noradIds): ?array
+    {
+        if (empty($noradIds)) {
+            return [];
+        }
+
+        // Strip leading zeros for the URL (Space-Track rejects zero-padded IDs in the path).
+        $ids = implode(',', array_map(fn ($id) => ltrim($id, '0') ?: '0', $noradIds));
+        $url = self::BASE . self::GP_BASE . '/NORAD_CAT_ID/' . $ids . '/format/json';
+
+        $guzzle = new GuzzleClient(['cookies' => $this->jar, 'timeout' => 60]);
+
+        try {
+            $response = $guzzle->get($url);
+        } catch (\Throwable $e) {
+            Log::error('[SpaceTrack] GP batch fetch error: ' . $e->getMessage());
+            return null;
+        }
+
+        $status = $response->getStatusCode();
+        if ($status < 200 || $status >= 300) {
+            Log::warning('[SpaceTrack] GP batch fetch HTTP ' . $status . ' — body: ' . substr((string) $response->getBody(), 0, 300));
+            return null;
+        }
+
+        $data = json_decode((string) $response->getBody(), true);
+
+        if (! is_array($data)) {
+            Log::warning('[SpaceTrack] GP batch response was not a JSON array');
+            return null;
+        }
+
+        $results = [];
+        foreach ($data as $r) {
+            $record = $this->normalizeGpRecord($r);
+            if ($record !== null) {
+                $results[] = $record;
+            }
+        }
+
+        return $results;
     }
 
     /**
