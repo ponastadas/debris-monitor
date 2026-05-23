@@ -7,18 +7,21 @@ Artisan::command('inspire', function () {
     $this->comment(\Illuminate\Foundation\Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Sync satellite catalog from CelesTrak every 6 hours.
-// Safe to run repeatedly — upserts satellites and rotates TLE records.
+// Sync satellite catalog from Space-Track GP endpoint — 4×/day.
+// Deliberately offset from :00/:30 per Space-Track API usage policy.
+// Times (UTC): 01:17, 07:17, 13:17, 19:17
 Schedule::command('satellites:sync')
-    ->everySixHours()
+    ->cron('17 1,7,13,19 * * *')
     ->withoutOverlapping()
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/satellites.log'));
 
-// Fetch real conjunction data from Space-Track CDM_PUBLIC every 6 hours.
+// Fetch real conjunction data from Space-Track CDM_PUBLIC — 3×/day (max allowed).
+// CDM policy: once every 8 hours. Times (UTC): 02:23, 10:23, 18:23.
+// Deliberately offset from :00/:30 per Space-Track API usage policy.
 // Requires SPACE_TRACK_USER / SPACE_TRACK_PASS in .env — exits cleanly if unset.
 Schedule::command('conjunctions:sync')
-    ->everySixHours()
+    ->cron('23 2,10,18 * * *')
     ->withoutOverlapping()
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/conjunctions.log'));
@@ -31,10 +34,11 @@ Schedule::command('db:backup')
 
 // SGP4-based conjunction screening — runs as a fallback/supplement to CDM sync.
 // Screens watched satellites against local debris catalog using TlePropagator.
+// Times (UTC): 03:47, 09:47, 15:47, 21:47 — offset from :00/:30.
 // Run the queue worker alongside this so notifications are dispatched promptly:
 //   php artisan queue:work --queue=default
 Schedule::command('conjunctions:check')
-    ->everySixHours()
+    ->cron('47 3,9,15,21 * * *')
     ->withoutOverlapping()
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/conjunctions-sgp4.log'));
