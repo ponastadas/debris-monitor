@@ -22,7 +22,6 @@ export default function Page() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNotFound(false);
     client.get(`/pages/${slug}`)
       .then((res) => setPage(res.data.data))

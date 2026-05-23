@@ -711,6 +711,7 @@ export default function DebrisMonitor({ onTrack }) {
 
   // Keep a ref to visible so animation loop can read it without stale closure
   const visibleRef  = useRef(visible);
+  // eslint-disable-next-line react-hooks/immutability
   visibleRef.current = visible;
   useEffect(() => { localStorage.setItem('satview_visible', JSON.stringify(visible)); }, [visible]);
 

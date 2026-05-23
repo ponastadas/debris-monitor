@@ -6,6 +6,7 @@ use App\Models\Satellite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class SatelliteSearchController extends Controller
 {
@@ -155,6 +156,11 @@ class SatelliteSearchController extends Controller
      */
     private function searchByFullText(string $q): array
     {
+        // FULLTEXT MATCH AGAINST is MySQL-only; fall through to LIKE on other drivers (e.g. SQLite in tests).
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return [];
+        }
+
         $terms = preg_split('/\s+/', trim($q), -1, PREG_SPLIT_NO_EMPTY);
         // Use AND mode (+term*): every typed word must appear in the name.
         // "NOAA 19" → "+NOAA* +19*" finds only NOAA 19, not every satellite with "19".

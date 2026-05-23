@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 #[Fillable(['identifier', 'date', 'count'])]
 class GuestUsage extends Model
@@ -40,16 +41,15 @@ class GuestUsage extends Model
      */
     public static function record(string $identifier): void
     {
-        static::insertOrIgnore([
-            'identifier' => $identifier,
-            'date' => today()->toDateString(),
-            'count' => 0,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $today = today()->toDateString();
+        $now = now()->toDateTimeString();
 
-        static::where('identifier', $identifier)
-            ->whereDate('date', today())
-            ->increment('count');
+        // Atomic upsert: insert with count=1 on first visit, increment on return.
+        // Works on both MySQL (ON DUPLICATE KEY UPDATE) and SQLite (ON CONFLICT DO UPDATE).
+        static::upsert(
+            [['identifier' => $identifier, 'date' => $today, 'count' => 1, 'created_at' => $now, 'updated_at' => $now]],
+            ['identifier', 'date'],
+            ['count' => DB::raw('count + 1'), 'updated_at' => $now]
+        );
     }
 }
