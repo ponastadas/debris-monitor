@@ -65,15 +65,16 @@ describe('Guest access — route visibility', () => {
 
   it('shows REGISTER and SIGN IN nav links to guest users', () => {
     render(<App />);
-    expect(screen.getByRole('link', { name: /register/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /sign in/i })).toBeInTheDocument();
+    // Menu uses display:none when closed — hidden:true includes non-a11y-tree elements
+    expect(screen.getByRole('link', { name: /register/i, hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /sign in/i, hidden: true })).toBeInTheDocument();
   });
 
   it('shows DASHBOARD and SIGN OUT links to authenticated users', () => {
     mockUser = { id: 1, name: 'Alice', email: 'alice@example.com' };
     render(<App />);
-    expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /dashboard/i, hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign out/i, hidden: true })).toBeInTheDocument();
   });
 });
 
