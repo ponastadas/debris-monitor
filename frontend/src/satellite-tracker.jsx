@@ -675,7 +675,6 @@ export default function SatelliteTracker({
   // On mount: restore savedSats (state lifted to parent, survives view switches) then load
   // initialNoradId if not already in the restored list. Three.js initialises synchronously;
   // async TLE fetches resolve after. Uses internal API (local DB → CelesTrak fallback).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const toLoad = new Map(); // noradId -> hint name
     for (const s of savedSats) toLoad.set(s.id, s.name);
@@ -690,6 +689,7 @@ export default function SatelliteTracker({
         }
       } catch { /* ignore individual failures */ }
     }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentional: fire once on mount
 
   // Init Three.js

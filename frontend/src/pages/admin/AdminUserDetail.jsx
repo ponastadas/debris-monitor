@@ -72,6 +72,7 @@ export default function AdminUserDetail() {
       })
       .catch(() => toast.error('Failed to load user.'))
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const save = async () => {

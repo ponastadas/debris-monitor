@@ -35,6 +35,7 @@ export default function AdminPages() {
       .finally(() => setLoading(false));
   };
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(load, []);
 
   const togglePublish = async (page) => {

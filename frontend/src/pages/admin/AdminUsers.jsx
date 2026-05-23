@@ -248,6 +248,7 @@ export default function AdminUsers() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(1); setPage(1); }, [filters]);
 
   const impersonate = async (user) => {

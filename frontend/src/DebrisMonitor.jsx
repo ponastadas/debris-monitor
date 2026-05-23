@@ -414,8 +414,10 @@ export default function DebrisMonitor({ onTrack }) {
   const animRef    = useRef(null);
   const meshRef    = useRef(null);    // InstancedMesh
   const objectsRef = useRef([]);      // parsed TLE objects
+  // eslint-disable-next-line react-hooks/purity
   const simTimeRef = useRef(Date.now());
   const dragRef    = useRef({ active: false, last: null, velX: 0, velY: 0 });
+  // eslint-disable-next-line react-hooks/purity
   const fpsRef     = useRef({ frames: 0, last: Date.now(), val: 0 });
   const speedRef   = useRef(SPEED_PRESETS[0]);
   const [loading, setLoading]   = useState({ active: true, pct: 0, msg: "Initialising" });
@@ -523,6 +525,47 @@ export default function DebrisMonitor({ onTrack }) {
   // When catalog is empty (fresh dev environment), CelesTrak fetches still work as before.
   const [dataSource, setDataSource] = useState(null); // 'local' | 'celestrak' | null
 
+  function buildMesh(objects) {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    // Remove old mesh
+    if (meshRef.current) {
+      scene.remove(meshRef.current);
+      meshRef.current.geometry.dispose();
+      meshRef.current.material.dispose();
+    }
+
+    const geo  = new THREE.SphereGeometry(0.006, 4, 4);
+    const mat  = new THREE.MeshBasicMaterial({ vertexColors: true });
+    const mesh = new THREE.InstancedMesh(geo, mat, objects.length);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+    const dummy = new THREE.Object3D();
+    const color = new THREE.Color();
+    const now   = simTimeRef.current;
+
+    objects.forEach((obj, i) => {
+      const pos = tleToPosition(obj.line1, obj.line2, now);
+      if (pos) {
+        dummy.position.copy(pos);
+      } else {
+        dummy.position.set(0, 0, 0);
+      }
+      dummy.scale.setScalar(obj.type === 'debris' ? 0.5 : 1);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      color.copy(COLORS[obj.type] || COLORS.unknown);
+      mesh.setColorAt(i, color);
+    });
+
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+    scene.add(mesh);
+    meshRef.current = mesh;
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -590,47 +633,6 @@ export default function DebrisMonitor({ onTrack }) {
     load();
     return () => { cancelled = true; };
   }, []);
-
-  function buildMesh(objects) {
-    const scene = sceneRef.current;
-    if (!scene) return;
-
-    // Remove old mesh
-    if (meshRef.current) {
-      scene.remove(meshRef.current);
-      meshRef.current.geometry.dispose();
-      meshRef.current.material.dispose();
-    }
-
-    const geo  = new THREE.SphereGeometry(0.006, 4, 4);
-    const mat  = new THREE.MeshBasicMaterial({ vertexColors: true });
-    const mesh = new THREE.InstancedMesh(geo, mat, objects.length);
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-
-    const dummy = new THREE.Object3D();
-    const color = new THREE.Color();
-    const now   = simTimeRef.current;
-
-    objects.forEach((obj, i) => {
-      const pos = tleToPosition(obj.line1, obj.line2, now);
-      if (pos) {
-        dummy.position.copy(pos);
-      } else {
-        dummy.position.set(0, 0, 0);
-      }
-      dummy.scale.setScalar(obj.type === 'debris' ? 0.5 : 1);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      color.copy(COLORS[obj.type] || COLORS.unknown);
-      mesh.setColorAt(i, color);
-    });
-
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-
-    scene.add(mesh);
-    meshRef.current = mesh;
-  }
 
   // Animation loop
   useEffect(() => {
@@ -709,7 +711,7 @@ export default function DebrisMonitor({ onTrack }) {
 
   // Keep a ref to visible so animation loop can read it without stale closure
   const visibleRef  = useRef(visible);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
+  visibleRef.current = visible;
   useEffect(() => { localStorage.setItem('satview_visible', JSON.stringify(visible)); }, [visible]);
 
   // Speed ref sync
