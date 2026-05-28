@@ -229,9 +229,9 @@ class SatelliteSyncCommand extends Command
         $this->line('Logging in to Space-Track.org…');
 
         if (! $client->login($user, $pass)) {
-            $this->error('Login failed — check SPACE_TRACK_USER / SPACE_TRACK_PASS in .env');
+            $this->warn('Space-Track login failed — falling back to CelesTrak.');
 
-            return self::FAILURE;
+            return $this->handleCelesTrak($isDryRun, $isIncremental);
         }
 
         $this->line('  Authenticated');
